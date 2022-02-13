@@ -1,0 +1,26 @@
+{
+  "name": "node-base-db",
+  "version": "0.0.1",
+  "description": "",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "jest --detectOpenHandles"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/core-toolkit/node-base-db.git"
+  },
+  "author": "Alexander Ivanov",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/core-toolkit/node-base-db/issues"
+  },
+  "homepage": "https://github.com/core-toolkit/node-base-db#readme",
+  "dependencies": {
+    "sequelize": "^6.15.0",
+    "umzug": "^3.0.0"
+  },
+  "devDependencies": {
+    "node-base-dev": "github:core-toolkit/node-base-dev"
+  }
+}
