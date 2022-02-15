@@ -4,7 +4,7 @@ const { resolve } = require('path');
 
 const CreateMigration = require('../cli/commands/create-migration');
 
-module.exports = ({ Core: { Cli, Project, Logger }, Clients: { DbClient } }) => {
+module.exports = ({ Core: { Cli, Project }, Client: { DbClient }, Log }) => {
   const umzug = new Umzug({
     migrations: {
       glob: resolve(Project.path, 'src/infrastructure/migrations/*.js'),
@@ -14,7 +14,7 @@ module.exports = ({ Core: { Cli, Project, Logger }, Clients: { DbClient } }) => 
       query: DbClient.getQueryInterface(),
     },
     storage: new SequelizeStorage({ sequelize: DbClient }),
-    logger: Logger.MigrationService,
+    logger: Log,
   });
 
   Cli.register([
