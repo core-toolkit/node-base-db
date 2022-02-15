@@ -5,7 +5,7 @@ module.exports = ({ dialect }, { addToConfig, addPackage, addAppToRoot }) => {
     throw new Error(`Unsupported dialect ${dialect}, must be one of: [${supportedDialects.join(', ')}]`);
   }
 
-  addToConfig('db:config.js', { dialect });
+  addToConfig('db:config.js', { dialect, dialectUpper: dialect.toUpperCase() });
   addPackage(`node-base-db-${dialect}`);
   addAppToRoot('Db');
 };
