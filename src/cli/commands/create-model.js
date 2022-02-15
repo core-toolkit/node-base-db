@@ -10,7 +10,7 @@ module.exports = ({ name }, { exists, template, addToRoot }) => {
   }
 
   template('db:model.js', destination, { name });
-  addToRoot('Model', name, './infrastructure/models');
+  addToRoot('Model', name, './infrastructure/models', 'db:register.js');
 
   console.log(`Model created at "${destination}"`);
 };
