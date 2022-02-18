@@ -1,6 +1,6 @@
 module.exports = {
   collectCoverage: true,
-  collectCoverageFrom: ['src/factories/*.js'],
+  collectCoverageFrom: ['src/factories/*.js', 'src/mocks/*.js'],
   testMatch: ['**/*.test.js'],
   testPathIgnorePatterns: ['./node_modules/'],
   silent: false,
