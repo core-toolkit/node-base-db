@@ -21,7 +21,7 @@ module.exports = (app) => {
       Cli.register({
         name: 'create:model',
         args: ['name'],
-        describe: 'Create new model',
+        description: 'Create new model',
         exec: CreateModel,
       });
     }
