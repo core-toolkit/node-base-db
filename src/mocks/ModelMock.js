@@ -50,7 +50,10 @@ module.exports = function (makeFn, seed = 0) {
       return instance;
     };
 
-    static * #query({ where } = { where: {} }) {
+    static * #query({ where } = { }) {
+      if (!where) {
+        where = {};
+      }
       for (const row of this.records.values()) {
         if (Object.keys(where).every((key) => (where[key] ? schema[key].type.convert(where[key]) : null) === row[key])) {
           yield new this(row, { isNewRecord: false });
