@@ -1,3 +1,4 @@
+const { Op } = require('sequelize');
 const DataTypes = require('./DataTypesMock');
 const { deepCopy, deepEquals } = require('node-base/src/utils/Obj');
 
@@ -17,6 +18,92 @@ module.exports = function (makeFn, seed = 0) {
   }
 
   const primary = fields.find((field) => schema[field].primaryKey);
+
+  const match = (row, key, op, value) => {
+    value ??= null;
+
+    const nullOrConvert = (value) => (value === null ? null : schema[key].type.convert(value));
+
+    switch (op) {
+      case Op.and:
+        return value.every((v) => match(row, key, key, v));
+      case Op.or:
+        return value.some((v) => match(row, key, key, v));
+      case Op.not:
+        return !match(row, key, null, value);
+      case Op.eq:
+      case Op.is:
+        return row[key] === nullOrConvert(value);
+      case Op.ne:
+        return row[key] !== nullOrConvert(value);
+      case Op.gt:
+        return row[key] > nullOrConvert(value);
+      case Op.gte:
+        return row[key] >= nullOrConvert(value);
+      case Op.lt:
+        return row[key] < nullOrConvert(value);
+      case Op.lte:
+        return row[key] <= nullOrConvert(value);
+      case Op.between:
+        return nullOrConvert(value[0]) <= row[key] && row[key] <= nullOrConvert(value[1]);
+      case Op.in:
+        return value.map(nullOrConvert).includes(row[key]);
+      case Op.notBetween:
+        return !match(row, key, Op.between, value);
+      case Op.notIn:
+        return !match(row, key, Op.in, value);
+      case Op.regexp:
+        return RegExp(value).test(row[key]);
+      case Op.notRegexp:
+        return !match(row, key, Op.regexp, value);
+      case Op.iRegexp:
+        return match(row, key, Op.regexp, RegExp(value, 'i'));
+      case Op.notIRegexp:
+        return !match(row, key, Op.iRegexp, value);
+      case Op.like:
+        value = value.replace(/%/g, '.*').replace(/_/g, '.');
+        return match(row, key, Op.regexp, `^${value}$`);
+      case Op.notLike:
+        return !match(row, key, Op.like, value);
+      case Op.startsWith:
+        return match(row, key, Op.like, `${value}%`);
+      case Op.endsWith:
+        return match(row, key, Op.like, `%${value}`);
+      case Op.substring:
+        return match(row, key, Op.like, `%${value}%`);
+      case Op.iLike:
+        value = value.replace(/%/g, '.*').replace(/_/g, '.');
+        return match(row, key, Op.iRegexp, `^${value}$`);
+      case Op.notILike:
+        return !match(row, key, Op.iLike, value);
+      case Op.col:
+        return row[key] === row[value];
+      case Op.all:
+      case Op.any:
+      case Op.match:
+      case Op.contains:
+      case Op.contained:
+      case Op.overlap:
+      case Op.adjacent:
+      case Op.strictLeft:
+      case Op.strictRight:
+      case Op.noExtendLeft:
+      case Op.noExtendRight:
+        throw new Error(`Operator "Op.${op.description}" is not yet supported in mocks`);
+    }
+
+    if (typeof value !== 'object' || value === null) {
+      return match(row, key, Op.eq, value);
+    }
+
+    if (Array.isArray(value)) {
+      return match(row, key, Op.in, value);
+    }
+
+    return Object.keys(value).map((key) => [row, key, null, value[key]]).concat(
+      Object.getOwnPropertySymbols(value).map((op) => [row, key, op, value[op]])
+    ).every((args) => match(...args));
+  };
 
   class Model {
     static #lastId = 0;
@@ -50,12 +137,12 @@ module.exports = function (makeFn, seed = 0) {
       return instance;
     };
 
-    static * #query({ where } = { }) {
+    static * __query({ where } = {}) {
       if (!where) {
         where = {};
       }
       for (const row of this.records.values()) {
-        if (Object.keys(where).every((key) => (where[key] ? schema[key].type.convert(where[key]) : null) === row[key])) {
+        if (match(row, null, null, where)) {
           yield new this(row, { isNewRecord: false });
         }
       }
@@ -66,12 +153,12 @@ module.exports = function (makeFn, seed = 0) {
     };
 
     static __findOne(...args) {
-      return this.#query(...args).next().value ?? null;
+      return this.__query(...args).next().value ?? null;
     };
 
     static __findAll(...args) {
       const results = [];
-      for (const instance of this.#query(...args)) {
+      for (const instance of this.__query(...args)) {
         results.push(instance);
       }
       return results;

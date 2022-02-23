@@ -1,3 +1,4 @@
+const { Op } = require('sequelize');
 const ModelMock = require('./ModelMock');
 const { STRING, NUMBER } = require('./DataTypesMock');
 
@@ -149,6 +150,305 @@ describe('ModelMock', () => {
       expect(count).toBe(2);
       const instance = Model.__create();
       expect(instance).toHaveProperty('id', 3);
+    });
+  });
+
+  describe('::__query()', () => {
+    const Model = ModelMock({ id: { type: NUMBER }, foo: { type: STRING }, baz: { type: STRING } });
+    Model.__create({ id: 1, foo: 'bar', baz: 'qux' });
+    Model.__create({ id: 2, foo: '123', baz: 'qux' });
+    Model.__create({ id: 3, foo: 'bar', baz: 'qux' });
+    Model.__create({ id: 4, foo: 'bar', baz: '123' });
+    Model.__create({ id: 5, foo: '123', baz: '123' });
+
+    it('returns a single record', () => {
+      const record = Model.__query().next().value;
+      expect(record).toBeInstanceOf(Model);
+      expect(record.get()).toEqual({ id: 1, foo: 'bar', baz: 'qux' });
+    });
+
+    it('returns all records', () => {
+      const records = [...Model.__query()].map((row) => row.get());
+      expect(records).toEqual([
+        { id: 1, foo: 'bar', baz: 'qux' },
+        { id: 2, foo: '123', baz: 'qux' },
+        { id: 3, foo: 'bar', baz: 'qux' },
+        { id: 4, foo: 'bar', baz: '123' },
+        { id: 5, foo: '123', baz: '123' },
+      ]);
+    });
+
+    it('returns all records matching the specified query', () => {
+      const records = [...Model.__query({
+        where: {
+          foo: 'bar',
+          baz: 'qux',
+        },
+      })].map((row) => row.get());
+      expect(records).toEqual([
+        { id: 1, foo: 'bar', baz: 'qux' },
+        { id: 3, foo: 'bar', baz: 'qux' },
+      ]);
+    });
+
+    it('returns all records matching the specified query using equality operators', () => {
+      const records1 = [...Model.__query({
+        where: {
+          foo: { [Op.eq]: 'bar' },
+          baz: { [Op.ne]: 'qux' },
+        },
+      })].map((row) => row.get());
+      expect(records1).toEqual([
+        { id: 4, foo: 'bar', baz: '123' },
+      ]);
+
+      const records2 = [...Model.__query({
+        where: {
+          foo: { [Op.is]: 'bar' },
+          baz: { [Op.not]: 'qux' },
+        },
+      })].map((row) => row.get());
+      expect(records2).toEqual(records1);
+    });
+
+    it('returns all records matching the specified query using array operators', () => {
+      const records1 = [...Model.__query({
+        where: {
+          id: [1, 2],
+        },
+      })].map((row) => row.get());
+      expect(records1).toEqual([
+        { id: 1, foo: 'bar', baz: 'qux' },
+        { id: 2, foo: '123', baz: 'qux' },
+      ]);
+
+      const records2 = [...Model.__query({
+        where: {
+          id: { [Op.in]: [1, 2] },
+        },
+      })].map((row) => row.get());
+      expect(records2).toEqual(records1);
+
+      const records3 = [...Model.__query({
+        where: {
+          id: { [Op.notIn]: [3, 4, 5] },
+        },
+      })].map((row) => row.get());
+      expect(records3).toEqual(records1);
+
+      const records4 = [...Model.__query({
+        where: {
+          id: { [Op.or]: [1, 2] },
+        },
+      })].map((row) => row.get());
+      expect(records4).toEqual(records1);
+    });
+
+    it('returns all records matching the specified query using number operators', () => {
+      const records1 = [...Model.__query({
+        where: {
+          id: { [Op.gt]: 3 },
+        },
+      })].map((row) => row.get());
+      expect(records1).toEqual([
+        { id: 4, foo: 'bar', baz: '123' },
+        { id: 5, foo: '123', baz: '123' },
+      ]);
+
+      const records2 = [...Model.__query({
+        where: {
+          id: { [Op.gte]: 3 },
+        },
+      })].map((row) => row.get());
+      expect(records2).toEqual([
+        { id: 3, foo: 'bar', baz: 'qux' },
+        { id: 4, foo: 'bar', baz: '123' },
+        { id: 5, foo: '123', baz: '123' },
+      ]);
+
+      const records3 = [...Model.__query({
+        where: {
+          id: { [Op.lt]: 3 },
+        },
+      })].map((row) => row.get());
+      expect(records3).toEqual([
+        { id: 1, foo: 'bar', baz: 'qux' },
+        { id: 2, foo: '123', baz: 'qux' },
+      ]);
+
+      const records4 = [...Model.__query({
+        where: {
+          id: { [Op.lte]: 3 },
+        },
+      })].map((row) => row.get());
+      expect(records4).toEqual([
+        { id: 1, foo: 'bar', baz: 'qux' },
+        { id: 2, foo: '123', baz: 'qux' },
+        { id: 3, foo: 'bar', baz: 'qux' },
+      ]);
+
+      const records5 = [...Model.__query({
+        where: {
+          id: { [Op.between]: [2, 4] },
+        },
+      })].map((row) => row.get());
+      expect(records5).toEqual([
+        { id: 2, foo: '123', baz: 'qux' },
+        { id: 3, foo: 'bar', baz: 'qux' },
+        { id: 4, foo: 'bar', baz: '123' },
+      ]);
+
+      const records6 = [...Model.__query({
+        where: {
+          id: { [Op.notBetween]: [2, 4] },
+        },
+      })].map((row) => row.get());
+      expect(records6).toEqual([
+        { id: 1, foo: 'bar', baz: 'qux' },
+        { id: 5, foo: '123', baz: '123' },
+      ]);
+    });
+
+    it('returns all records matching the specified query using logical AND', () => {
+      const records1 = [...Model.__query({
+        where: {
+          id: { [Op.gt]: 2, [Op.lt]: 4 },
+        },
+      })].map((row) => row.get());
+      expect(records1).toEqual([
+        { id: 3, foo: 'bar', baz: 'qux' },
+      ]);
+
+      const records2 = [...Model.__query({
+        where: {
+          [Op.and]: [{ foo: 'bar' }, { baz: 'qux' }],
+        },
+      })].map((row) => row.get());
+      expect(records2).toEqual([
+        { id: 1, foo: 'bar', baz: 'qux' },
+        { id: 3, foo: 'bar', baz: 'qux' },
+      ]);
+    });
+
+    it('returns all records matching the specified query using logical OR', () => {
+      const records = [...Model.__query({
+        where: {
+          [Op.or]: [{ id: 1 }, { id: 2 }],
+        },
+      })].map((row) => row.get());
+      expect(records).toEqual([
+        { id: 1, foo: 'bar', baz: 'qux' },
+        { id: 2, foo: '123', baz: 'qux' },
+      ]);
+    });
+
+    it('returns all records matching the specified query using logical NOT', () => {
+      const records = [...Model.__query({
+        where: {
+          [Op.not]: {
+            [Op.and]: [{ foo: 'bar' }, { baz: 'qux' }],
+          },
+        },
+      })].map((row) => row.get());
+      expect(records).toEqual([
+        { id: 2, foo: '123', baz: 'qux' },
+        { id: 4, foo: 'bar', baz: '123' },
+        { id: 5, foo: '123', baz: '123' },
+      ]);
+    });
+
+    it('returns all records matching the specified query using string operators', () => {
+      const records1 = [...Model.__query({
+        where: {
+          foo: { [Op.like]: '%a%' },
+          baz: { [Op.notLike]: '_u_' },
+        },
+      })].map((row) => row.get());
+      expect(records1).toEqual([
+        { id: 4, foo: 'bar', baz: '123' },
+      ]);
+
+      const records2 = [...Model.__query({
+        where: {
+          foo: { [Op.startsWith]: 'b' },
+          baz: { [Op.endsWith]: '3' },
+        },
+      })].map((row) => row.get());
+      expect(records2).toEqual([
+        { id: 4, foo: 'bar', baz: '123' },
+      ]);
+
+      const records3 = [...Model.__query({
+        where: {
+          foo: { [Op.substring]: 'a' },
+        },
+      })].map((row) => row.get());
+      expect(records3).toEqual([
+        { id: 1, foo: 'bar', baz: 'qux' },
+        { id: 3, foo: 'bar', baz: 'qux' },
+        { id: 4, foo: 'bar', baz: '123' },
+      ]);
+
+      const records4 = [...Model.__query({
+        where: {
+          foo: { [Op.iLike]: '%A%' },
+          baz: { [Op.notILike]: '%U%' },
+        },
+      })].map((row) => row.get());
+      expect(records4).toEqual([
+        { id: 4, foo: 'bar', baz: '123' },
+      ]);
+
+      const records5 = [...Model.__query({
+        where: {
+          foo: { [Op.regexp]: '^[b]' },
+          baz: { [Op.notRegexp]: /[0-9]+/ },
+        },
+      })].map((row) => row.get());
+      expect(records5).toEqual([
+        { id: 1, foo: 'bar', baz: 'qux' },
+        { id: 3, foo: 'bar', baz: 'qux' },
+      ]);
+
+      const records6 = [...Model.__query({
+        where: {
+          foo: { [Op.iRegexp]: '^[B]' },
+          baz: { [Op.notIRegexp]: /[A-Z]+/ },
+        },
+      })].map((row) => row.get());
+      expect(records6).toEqual([
+        { id: 4, foo: 'bar', baz: '123' },
+      ]);
+    });
+
+    it('returns all records matching the specified query using another column\'s value', () => {
+      const records = [...Model.__query({
+        where: {
+          foo: { [Op.col]: 'baz' },
+        },
+      })].map((row) => row.get());
+      expect(records).toEqual([
+        { id: 5, foo: '123', baz: '123' },
+      ]);
+    });
+
+    it('throws on when querying with unsupported operators', () => {
+      const unsupported = [
+        Op.all,
+        Op.any,
+        Op.match,
+        Op.contains,
+        Op.contained,
+        Op.overlap,
+        Op.adjacent,
+        Op.strictLeft,
+        Op.strictRight,
+        Op.noExtendLeft,
+        Op.noExtendRight,
+      ];
+      for (const operator of unsupported) {
+        expect(() => Model.__query({ where: { foo: { [operator]: null } } }).next()).toThrow();
+      }
     });
   });
 
