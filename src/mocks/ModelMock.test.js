@@ -79,6 +79,28 @@ describe('ModelMock', () => {
     ]);
   });
 
+  it('makes a model mock and seeds complex data', () => {
+    const Model = ModelMock((DataTypes) => ({
+      name: 'Test',
+      definition: {
+        id: { primaryKey: true, type: DataTypes.NUMBER },
+        foo: { type: DataTypes.RANGE(DataTypes.NUMBER) },
+        bar: { type: DataTypes.ENUM('a', 'b', 'c') },
+        baz: { type: DataTypes.ARRAY(DataTypes.NUMBER) },
+        qux: { type: DataTypes.DATE },
+      },
+    }), 5);
+
+    const records = Model.__findAll();
+    expect(records.map((row) => row.get())).toEqual([
+      { id: 1, foo: 1, bar: 'a', baz: [1, 2, 3], qux: new Date(1) },
+      { id: 2, foo: 2, bar: 'b', baz: [2, 3, 4], qux: new Date(2) },
+      { id: 3, foo: 3, bar: 'c', baz: [3, 4, 5], qux: new Date(3) },
+      { id: 4, foo: 4, bar: 'a', baz: [4, 5, 6], qux: new Date(4) },
+      { id: 5, foo: 5, bar: 'b', baz: [5, 6, 7], qux: new Date(5) },
+    ]);
+  });
+
   it('makes a model instance', () => {
     const Model = ModelMock({ foo: { type: STRING } });
 

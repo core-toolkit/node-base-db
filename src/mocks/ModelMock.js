@@ -122,8 +122,21 @@ module.exports = function (makeFn, seed = 0) {
         for (const field of fields) {
           data[field] = i + 1;
 
-          if (schema[field].type === DataTypes.TEXT && !schema[field].primaryKey) {
-            data[field] = `${field} ${data[field]}`;
+          if (schema[field].primaryKey) {
+            continue;
+          }
+
+          switch (schema[field].type.typeName) {
+            case DataTypes.TEXT.typeName:
+              data[field] = `${field} ${data[field]}`;
+              break;
+            case DataTypes.ENUM.typeName:
+              const values = schema[field].type.options.flat().flatMap((v) => v.values ?? v);
+              data[field] = values[(data[field] - 1) % values.length];
+              break;
+            case DataTypes.ARRAY.typeName:
+              data[field] = [data[field], data[field] + 1, data[field] + 2];
+              break;
           }
         }
         this.__create(data);
@@ -312,7 +325,7 @@ module.exports = function (makeFn, seed = 0) {
           this.dataValues[primary] = ++Model.#lastId;
         }
         this.isNewRecord = false;
-        Model.records.add(this._previousDataValues);
+        Model.__records.add(this._previousDataValues);
       }
       Object.assign(this._previousDataValues, deepCopy(this.dataValues));
     }
@@ -408,6 +421,7 @@ module.exports = function (makeFn, seed = 0) {
   if (modelName) {
     Object.defineProperty(Model, 'name', { value: modelName });
   }
+
   return Model;
 };
 
