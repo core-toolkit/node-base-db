@@ -205,6 +205,18 @@ describe('ModelMock', () => {
       ]);
     });
 
+    it('returns records with an offset', () => {
+      const records = [...Model.__query({
+        where: { foo: 'bar' },
+        limit: 2,
+        offset: 1,
+      })].map((row) => row.get());
+      expect(records).toEqual([
+        { id: 3, foo: 'bar', baz: 'qux' },
+        { id: 4, foo: 'bar', baz: '123' },
+      ]);
+    });
+
     it('returns all records matching the specified query using equality operators', () => {
       const records1 = [...Model.__query({
         where: {

@@ -147,10 +147,13 @@ module.exports = function (makeFn, seed = 0) {
 
       let {
         limit = 0,
+        offset = 0,
       } = options;
 
       for (const row of this.__records.values()) {
         if (match(row, null, null, where)) {
+          if (offset-- > 0) continue;
+
           yield new this(row, { isNewRecord: false });
 
           if (--limit === 0) break;
