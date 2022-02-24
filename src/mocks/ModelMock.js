@@ -107,7 +107,10 @@ module.exports = function (makeFn, seed = 0) {
 
   class Model {
     static #lastId = 0;
-    static records = new Set();
+    static __records = new Set();
+    static __schema = schema;
+    static __fields = fields;
+    static __primary = primary;
 
     _previousDataValues = {};
     dataValues = {};
@@ -141,7 +144,8 @@ module.exports = function (makeFn, seed = 0) {
       if (!where) {
         where = {};
       }
-      for (const row of this.records.values()) {
+
+      for (const row of this.__records.values()) {
         if (match(row, null, null, where)) {
           yield new this(row, { isNewRecord: false });
         }
@@ -150,11 +154,11 @@ module.exports = function (makeFn, seed = 0) {
 
     static __findByPk(id) {
       return this.__findOne({ where: { [primary]: id }});
-    };
+    }
 
     static __findOne(...args) {
       return this.__query(...args).next().value ?? null;
-    };
+    }
 
     static __findAll(...args) {
       const results = [];
@@ -162,7 +166,7 @@ module.exports = function (makeFn, seed = 0) {
         results.push(instance);
       }
       return results;
-    };
+    }
 
     static __count(...args) {
       return this.__findAll(...args).length;
@@ -190,7 +194,7 @@ module.exports = function (makeFn, seed = 0) {
     static mockReset() {
       this.mockClear();
       this.#lastId = 0;
-      this.records.clear();
+      this.__records.clear();
       this.__seed(seed);
     }
 
@@ -249,7 +253,7 @@ module.exports = function (makeFn, seed = 0) {
     }
 
     __destroy() {
-      Model.records.delete(this._previousDataValues);
+      Model.__records.delete(this._previousDataValues);
     }
 
     __update(values) {

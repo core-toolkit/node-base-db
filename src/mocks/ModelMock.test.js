@@ -29,7 +29,7 @@ const assertClearedMocks = (Model) => {
 
 const assertModelClass = (Model) => {
   expect(Model).toBeInstanceOf(Function);
-  expect(Model).toHaveProperty('records', expect.any(Set));
+  expect(Model).toHaveProperty('__records', expect.any(Set));
   expect(Model).toHaveProperty('mockClear', expect.any(Function));
   expect(Model).toHaveProperty('mockReset', expect.any(Function));
   expect(Model).toHaveProperty('build', expect.any(Function));
@@ -53,9 +53,12 @@ describe('ModelMock', () => {
   });
 
   it('makes a model mock with a make function', () => {
-    const Model = ModelMock((DataTypes) => ({ name: 'Test', definition: {
-      foo: { type: DataTypes.STRING },
-    }}));
+    const Model = ModelMock((DataTypes) => ({
+      name: 'Test',
+      definition: {
+        foo: { type: DataTypes.STRING },
+      },
+    }));
     assertModelClass(Model);
   });
 
@@ -661,21 +664,21 @@ describe('ModelMock', () => {
     });
   });
 
-  describe('::records', () => {
+  describe('::__records', () => {
     it('contains all record data', () => {
       const Model = ModelMock({ foo: { type: STRING } });
-      expect(Model.records.size).toBe(0);
+      expect(Model.__records.size).toBe(0);
 
       Model.__create({ foo: 'bar' });
-      expect(Model.records.size).toBe(1);
+      expect(Model.__records.size).toBe(1);
 
       const instance = Model.build({ foo: 'baz' });
-      expect(Model.records.size).toBe(1);
+      expect(Model.__records.size).toBe(1);
 
       instance.__save();
-      expect(Model.records.size).toBe(2);
+      expect(Model.__records.size).toBe(2);
 
-      expect([...Model.records.values()]).toEqual([{ foo: 'bar' }, { foo: 'baz' }]);
+      expect([...Model.__records.values()]).toEqual([{ foo: 'bar' }, { foo: 'baz' }]);
     });
   });
 
