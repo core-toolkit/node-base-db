@@ -140,14 +140,20 @@ module.exports = function (makeFn, seed = 0) {
       return instance;
     };
 
-    static * __query({ where } = {}) {
-      if (!where) {
-        where = {};
-      }
+    static * __query(options = {}) {
+      const {
+        where = {},
+      } = options;
+
+      let {
+        limit = 0,
+      } = options;
 
       for (const row of this.__records.values()) {
         if (match(row, null, null, where)) {
           yield new this(row, { isNewRecord: false });
+
+          if (--limit === 0) break;
         }
       }
     }

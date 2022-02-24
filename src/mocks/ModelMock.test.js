@@ -194,6 +194,17 @@ describe('ModelMock', () => {
       ]);
     });
 
+    it('returns a limited number of records', () => {
+      const records = [...Model.__query({
+        where: { foo: 'bar' },
+        limit: 2,
+      })].map((row) => row.get());
+      expect(records).toEqual([
+        { id: 1, foo: 'bar', baz: 'qux' },
+        { id: 3, foo: 'bar', baz: 'qux' },
+      ]);
+    });
+
     it('returns all records matching the specified query using equality operators', () => {
       const records1 = [...Model.__query({
         where: {
