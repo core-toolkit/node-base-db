@@ -181,6 +181,33 @@ describe('ModelMock', () => {
       ]);
     });
 
+    it('returns all records ordered by a column', () => {
+      const records = [...Model.__query({ order: ['foo', 'DESC']})].map((row) => row.get());
+      expect(records).toEqual([
+        { id: 1, foo: 'bar', baz: 'qux' },
+        { id: 3, foo: 'bar', baz: 'qux' },
+        { id: 4, foo: 'bar', baz: '123' },
+        { id: 2, foo: '123', baz: 'qux' },
+        { id: 5, foo: '123', baz: '123' },
+      ]);
+    });
+
+    it('returns all records ordered by multiple columns', () => {
+      const records = [...Model.__query({
+        order: [
+          ['foo', 'ASC'],
+          ['id', 'DESC'],
+        ],
+      })].map((row) => row.get());
+      expect(records).toEqual([
+        { id: 5, foo: '123', baz: '123' },
+        { id: 2, foo: '123', baz: 'qux' },
+        { id: 4, foo: 'bar', baz: '123' },
+        { id: 3, foo: 'bar', baz: 'qux' },
+        { id: 1, foo: 'bar', baz: 'qux' },
+      ]);
+    });
+
     it('returns all records matching the specified query', () => {
       const records = [...Model.__query({
         where: {

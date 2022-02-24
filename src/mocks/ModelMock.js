@@ -148,9 +148,24 @@ module.exports = function (makeFn, seed = 0) {
       let {
         limit = 0,
         offset = 0,
+        order = [],
       } = options;
 
-      for (const row of this.__records.values()) {
+      const records = [...this.__records.values()];
+      if (order.length) {
+        if (typeof order[0] === 'string') {
+          order = [order];
+        }
+        records.sort((a, b) => {
+          for (const [key, direction] of order) {
+            if (a[key] === b[key]) continue;
+            return a[key] > b[key] && direction === 'DESC' || a[key] < b[key] && direction !== 'DESC' ? -1 : 1;
+          }
+          return 0;
+        });
+      }
+
+      for (const row of records) {
         if (match(row, null, null, where)) {
           if (offset-- > 0) continue;
 
