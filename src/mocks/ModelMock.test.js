@@ -5,6 +5,10 @@ const { STRING, NUMBER } = require('./DataTypesMock');
 const makeModelWithDirtyMocks = async (seed = 0) => {
   const Model = ModelMock({ id: { primaryKey: true, autoIncrement: true, type: NUMBER } }, seed);
   Model.build();
+  Model.belongsTo(Model);
+  Model.belongsToMany(Model, { through: 'ModelModel' });
+  Model.hasOne(Model);
+  Model.hasMany(Model);
   await Model.destroy({ where: { id: -1 } });
   await Model.update({});
   await Model.create();
@@ -17,6 +21,10 @@ const makeModelWithDirtyMocks = async (seed = 0) => {
 };
 
 const assertClearedMocks = (Model) => {
+  expect(Model.belongsTo).not.toHaveBeenCalled();
+  expect(Model.belongsToMany).not.toHaveBeenCalled();
+  expect(Model.hasOne).not.toHaveBeenCalled();
+  expect(Model.hasMany).not.toHaveBeenCalled();
   expect(Model.destroy).not.toHaveBeenCalled();
   expect(Model.update).not.toHaveBeenCalled();
   expect(Model.build).not.toHaveBeenCalled();
@@ -32,6 +40,10 @@ const assertModelClass = (Model) => {
   expect(Model).toHaveProperty('__records', expect.any(Set));
   expect(Model).toHaveProperty('mockClear', expect.any(Function));
   expect(Model).toHaveProperty('mockReset', expect.any(Function));
+  expect(Model).toHaveProperty('belongsTo', expect.any(Function));
+  expect(Model).toHaveProperty('belongsToMany', expect.any(Function));
+  expect(Model).toHaveProperty('hasOne', expect.any(Function));
+  expect(Model).toHaveProperty('hasMany', expect.any(Function));
   expect(Model).toHaveProperty('build', expect.any(Function));
   expect(Model).toHaveProperty('create', expect.any(Function));
   expect(Model).toHaveProperty('findOne', expect.any(Function));
@@ -60,6 +72,17 @@ describe('ModelMock', () => {
       },
     }));
     assertModelClass(Model);
+  });
+
+  it('makes a model mock with a make function and model storage', () => {
+    const models = {};
+    const Model = ModelMock((DataTypes) => ({
+      name: 'Test',
+      definition: {
+        foo: { type: DataTypes.STRING },
+      },
+    }), 0, models);
+    expect(models).toHaveProperty('Test', Model);
   });
 
   it('makes a model mock and seeds data', () => {
@@ -733,6 +756,948 @@ describe('ModelMock', () => {
       const records = Model.__findAll();
       expect(records.length).toBe(1);
       expect(records[0].get()).toEqual({ foo: 'bar' });
+    });
+  });
+
+  describe('::belongsTo()', () => {
+    const makeAssociatedModels = (models = {}) => {
+      ModelMock(() => ({
+        name: 'Model',
+        definition: {
+          OtherModelFoo: { type: STRING },
+        },
+        associations: {
+          OtherModel: (self, target) => self.belongsTo(target, {
+            as: 'otherModel',
+            foreignKey: 'OtherModelFoo',
+            targetKey: 'foo',
+          }),
+        },
+      }), 0, models);
+
+      ModelMock(() => ({
+        name: 'OtherModel',
+        definition: {
+          id: { type: NUMBER, primaryKey: true },
+          foo: { type: STRING },
+        },
+      }), 0, models);
+
+      return models;
+    };
+
+    it('configures a 1:1 / N:1 association', () => {
+      const Model = ModelMock(() => ({
+        name: 'Model',
+        definition: {
+          id: { type: NUMBER, primaryKey: true },
+          parentModelId: { type: NUMBER },
+        },
+        associations: {
+          Model: (self, target) => self.belongsTo(target, {
+            as: 'parent',
+            foreignKey: {
+              name: 'parentModelId',
+              allowNull: true,
+              type: NUMBER,
+            },
+            targetKey: 'id',
+          }),
+        },
+      }));
+      expect(Model.__associations).toEqual([{
+        options: {
+          as: 'parent',
+          foreignKey: {
+            name: 'parentModelId',
+            allowNull: true,
+            type: NUMBER,
+          },
+          targetKey: 'id',
+        },
+        target: Model,
+        type: 'belongsTo',
+        methods: {
+          getParent: expect.any(Function),
+          setParent: expect.any(Function),
+          createParent: expect.any(Function),
+        },
+      }]);
+
+      Model.belongsTo(Model, {
+        as: 'otherModel',
+        foreignKey: 'otherModelId',
+        targetKey: 'id',
+      });
+      expect(Model.__associations[1].options).toEqual({
+        as: 'otherModel',
+        foreignKey: {
+          name: 'otherModelId',
+          allowNull: true,
+          type: NUMBER,
+        },
+        targetKey: 'id',
+      });
+
+      Model.belongsTo(Model);
+      expect(Model.__associations[2].options).toEqual({
+        as: 'Model',
+        foreignKey: {
+          name: 'ModelId',
+          allowNull: true,
+          type: NUMBER,
+        },
+        targetKey: 'id',
+      });
+
+      const instance = Model.__create({ id: 1 });
+      expect(instance).toHaveProperty('getParent', expect.any(Function));
+      expect(instance).toHaveProperty('setParent', expect.any(Function));
+      expect(instance).toHaveProperty('createParent', expect.any(Function));
+    });
+
+    describe('.createOTHER()', () => {
+      it('creates a remote instance and associates this one with it', async () => {
+        const { Model, OtherModel } = makeAssociatedModels();
+        const instance = Model.__create();
+        const otherInstance = await instance.createOtherModel({ id: 1, foo: 'bar' });
+        expect(otherInstance).toBeInstanceOf(OtherModel);
+        expect(otherInstance.get()).toEqual({ id: 1, foo: 'bar' });
+      });
+    });
+
+    describe('.setOTHER()', () => {
+      it('associates with the remote instance', async () => {
+        const { Model, OtherModel } = makeAssociatedModels();
+
+        const instance1 = Model.__create();
+        const otherInstance = OtherModel.__create({ id: 1, foo: 'bar' });
+
+        await instance1.setOtherModel(otherInstance);
+        expect(instance1.OtherModelFoo).toBe('bar');
+
+        const instance2 = Model.__create();
+        await instance2.setOtherModel(otherInstance)
+        expect(instance2.OtherModelFoo).toBe('bar');
+
+        instance1.__reload();
+        expect(instance1.OtherModelFoo).toBe(null);
+
+        await instance2.setOtherModel(null)
+        expect(instance2.OtherModelFoo).toBe(null);
+      });
+    });
+
+    describe('.getOTHER()', () => {
+      it('returns the remote instance', async () => {
+        const { Model, OtherModel } = makeAssociatedModels();
+
+        const instance = Model.__create();
+        const otherInstance = OtherModel.__create({ id: 1, foo: 'bar' });
+
+        await expect(instance.getOtherModel()).resolves.toBe(null);
+        instance.__update({ OtherModelFoo: 'bar' });
+
+        const instance_otherInstance = await instance.getOtherModel();
+        expect(instance_otherInstance).toBeInstanceOf(OtherModel);
+        expect(instance_otherInstance.get()).toEqual(otherInstance.get());
+      });
+    });
+  });
+
+  describe('::belongsToMany()', () => {
+    const makeAssociatedModels = (models = {}) => {
+      ModelMock(() => ({
+        name: 'Model',
+        definition: {
+          id: { type: NUMBER, primaryKey: true, autoIncrement: true },
+        },
+        associations: {
+          OtherModel: (self, target) => self.belongsToMany(target, {
+            through: 'ThroughModel',
+          }),
+        },
+      }), 0, models);
+
+      ModelMock(() => ({
+        name: 'OtherModel',
+        definition: {
+          id: { type: NUMBER, primaryKey: true, autoIncrement: true },
+        },
+      }), 0, models);
+
+      return models;
+    };
+
+    it('configures a N:M association', () => {
+      const models = {};
+      const ModelModel = ModelMock(() => ({
+        name: 'ModelModel',
+        definition: {
+          ModelId: { type: NUMBER },
+          parentId: { type: NUMBER },
+        },
+      }), 0, models);
+      const Model = ModelMock(() => ({
+        name: 'Model',
+        definition: {
+          id: { type: NUMBER, primaryKey: true },
+        },
+        associations: {
+          Model: (self, target) => self.belongsToMany(target, {
+            as: 'parents',
+            through: {
+              model: ModelModel,
+            },
+            sourceKey: 'id',
+            foreignKey: {
+              name: 'parentId',
+              allowNull: false,
+              type: NUMBER,
+            },
+            targetKey: 'id',
+            otherKey: {
+              name: 'ModelId',
+              allowNull: false,
+              type: NUMBER,
+            },
+          }),
+        },
+      }), 0, models);
+      expect(Model.__associations).toEqual([{
+        options: {
+          as: 'parents',
+          through: {
+            model: ModelModel,
+          },
+          sourceKey: 'id',
+          foreignKey: {
+            name: 'parentId',
+            allowNull: false,
+            type: NUMBER,
+          },
+          targetKey: 'id',
+          otherKey: {
+            name: 'ModelId',
+            allowNull: false,
+            type: NUMBER,
+          },
+        },
+        target: Model,
+        type: 'belongsToMany',
+        methods: {
+          getParents: expect.any(Function),
+          countParents: expect.any(Function),
+          hasParent: expect.any(Function),
+          hasParents: expect.any(Function),
+          setParents: expect.any(Function),
+          addParent: expect.any(Function),
+          addParents: expect.any(Function),
+          removeParent: expect.any(Function),
+          removeParents: expect.any(Function),
+          createParent: expect.any(Function),
+        },
+      }]);
+
+      Model.belongsToMany(Model, {
+        as: 'parents2',
+        foreignKey: 'm1',
+        otherKey: 'm2',
+        through: 'ModelJoin'
+      });
+      expect(Model.__associations[1].options).toEqual({
+        as: 'parents2',
+        through: {
+          model: models.ModelJoin,
+        },
+        sourceKey: 'id',
+        foreignKey: {
+          name: 'm1',
+          allowNull: false,
+          type: NUMBER,
+        },
+        targetKey: 'id',
+        otherKey: {
+          name: 'm2',
+          allowNull: false,
+          type: NUMBER,
+        },
+      });
+      assertModelClass(models.ModelJoin);
+      expect(models.ModelJoin).toHaveProperty('name', 'ModelJoin');
+
+      const Other = ModelMock(() => ({
+        name: 'Other',
+        definition: {
+          id: { type: NUMBER, primaryKey: true },
+        },
+      }), 0, models);
+      const ModelOther = ModelMock(() => ({
+        name: 'ModelOther',
+        definition: {
+          ModelId: { type: NUMBER },
+          parentId: { type: NUMBER },
+        },
+      }), 0, models);
+
+      Model.belongsToMany(Other, { through: 'ModelOther' });
+      expect(Model.__associations[2].options).toEqual({
+        as: 'Others',
+        through: {
+          model: ModelOther,
+        },
+        sourceKey: 'id',
+        foreignKey: {
+          name: 'ModelId',
+          allowNull: false,
+          type: NUMBER,
+        },
+        targetKey: 'id',
+        otherKey: {
+          name: 'OtherId',
+          allowNull: false,
+          type: NUMBER,
+        },
+      });
+
+      const instance = Model.__create({ id: 1 });
+      expect(instance).toHaveProperty('getParents', expect.any(Function));
+      expect(instance).toHaveProperty('countParents', expect.any(Function));
+      expect(instance).toHaveProperty('hasParent', expect.any(Function));
+      expect(instance).toHaveProperty('hasParents', expect.any(Function));
+      expect(instance).toHaveProperty('setParents', expect.any(Function));
+      expect(instance).toHaveProperty('addParent', expect.any(Function));
+      expect(instance).toHaveProperty('addParents', expect.any(Function));
+      expect(instance).toHaveProperty('removeParent', expect.any(Function));
+      expect(instance).toHaveProperty('removeParents', expect.any(Function));
+      expect(instance).toHaveProperty('createParent', expect.any(Function));
+    });
+
+    describe('.createOTHER()', () => {
+      it('creates a remote instance and associates it with this one', async () => {
+        const { Model, OtherModel, ThroughModel } = makeAssociatedModels();
+        const instance = Model.__create();
+
+        const otherInstance1 = await instance.createOtherModel();
+        expect(otherInstance1).toBeInstanceOf(OtherModel);
+        expect(otherInstance1.get()).toEqual({ id: 1 });
+        expect(ThroughModel.__findOne({ where: { ModelId: 1, OtherModelId: 1 } })).toBeTruthy();
+
+        const otherInstance2 = await instance.createOtherModel();
+        expect(otherInstance2).toBeInstanceOf(OtherModel);
+        expect(otherInstance2.get()).toEqual({ id: 2 });
+        expect(ThroughModel.__findOne({ where: { ModelId: 1, OtherModelId: 2 } })).toBeTruthy();
+      });
+    });
+
+    describe('.countOTHERS()', () => {
+      it('returns the number of remote instances associated with this one', async () => {
+        const { Model, OtherModel, ThroughModel } = makeAssociatedModels();
+        const instance = Model.__create();
+
+        await expect(instance.countOtherModels()).resolves.toBe(0);
+
+        OtherModel.__create();
+        ThroughModel.create({ ModelId: 1, OtherModelId: 1 });
+        await expect(instance.countOtherModels()).resolves.toBe(1);
+
+        OtherModel.__create();
+        ThroughModel.create({ ModelId: 1, OtherModelId: 2 });
+        await expect(instance.countOtherModels()).resolves.toBe(2);
+      });
+    });
+
+    describe('.hasOTHER()', () => {
+      it('returns whether the remote instance is associated with this one', async () => {
+        const { Model, OtherModel, ThroughModel } = makeAssociatedModels();
+        const instance = Model.__create();
+
+        const otherInstance1 = OtherModel.__create();
+        ThroughModel.create({ ModelId: 1, OtherModelId: 1 });
+        await expect(instance.hasOtherModel(otherInstance1)).resolves.toBe(true);
+
+        const otherInstance2 = OtherModel.__create();
+        await expect(instance.hasOtherModel(otherInstance2)).resolves.toBe(false);
+      });
+    });
+
+    describe('.hasOTHERS()', () => {
+      it('returns whether all remote instances are associated with this one', async () => {
+        const { Model, OtherModel, ThroughModel } = makeAssociatedModels();
+        const instance = Model.__create();
+
+        const otherInstance1 = OtherModel.__create();
+        ThroughModel.create({ ModelId: 1, OtherModelId: 1 });
+        await expect(instance.hasOtherModels([otherInstance1])).resolves.toBe(true);
+
+        const otherInstance2 = OtherModel.__create();
+        await expect(instance.hasOtherModels([otherInstance1, otherInstance2])).resolves.toBe(false);
+
+        ThroughModel.create({ ModelId: 1, OtherModelId: 2 });
+        await expect(instance.hasOtherModels([otherInstance1, otherInstance2])).resolves.toBe(true);
+      });
+    });
+
+    describe('.addOTHER()', () => {
+      it('associates the remote instance with this one', async () => {
+        const { Model, OtherModel, ThroughModel } = makeAssociatedModels();
+        const instance = Model.__create();
+
+        const otherInstance1 = OtherModel.__create();
+        await instance.addOtherModel(otherInstance1);
+        expect(ThroughModel.__findOne({ where: { ModelId: 1, OtherModelId: 1 } })).toBeTruthy();
+
+        const otherInstance2 = OtherModel.__create();
+        await instance.addOtherModel(otherInstance2);
+        expect(ThroughModel.__findOne({ where: { ModelId: 1, OtherModelId: 2 } })).toBeTruthy();
+        expect(ThroughModel.__findOne({ where: { ModelId: 1, OtherModelId: 1 } })).toBeTruthy();
+      });
+    });
+
+    describe('.addOTHERS()', () => {
+      it('associates the remote instances with this one', async () => {
+        const { Model, OtherModel, ThroughModel } = makeAssociatedModels();
+        const instance = Model.__create();
+
+        const otherInstance1 = OtherModel.__create();
+        await instance.addOtherModels([otherInstance1]);
+        expect(ThroughModel.__findOne({ where: { ModelId: 1, OtherModelId: 1 } })).toBeTruthy();
+
+        const otherInstance2 = OtherModel.__create();
+        const otherInstance3 = OtherModel.__create();
+        await instance.addOtherModels([otherInstance2, otherInstance3]);
+        expect(ThroughModel.__findOne({ where: { ModelId: 1, OtherModelId: 2 } })).toBeTruthy();
+        expect(ThroughModel.__findOne({ where: { ModelId: 1, OtherModelId: 3 } })).toBeTruthy();
+        expect(ThroughModel.__findOne({ where: { ModelId: 1, OtherModelId: 1 } })).toBeTruthy();
+      });
+    });
+
+    describe('.removeOTHER()', () => {
+      it('disassociates the remote instance from this one', async () => {
+        const { Model, OtherModel, ThroughModel } = makeAssociatedModels();
+        const instance = Model.__create();
+        const otherInstance = OtherModel.__create();
+        ThroughModel.create({ ModelId: 1, OtherModelId: 1 });
+
+        await instance.removeOtherModel(otherInstance);
+        expect(ThroughModel.__findOne({ where: { ModelId: 1, OtherModelId: 1 } })).toBeFalsy();
+      });
+    });
+
+    describe('.removeOTHERS()', () => {
+      it('disassociates the remote instances from this one', async () => {
+        const { Model, OtherModel, ThroughModel } = makeAssociatedModels();
+        const instance = Model.__create();
+
+        const otherInstance1 = OtherModel.__create();
+        const otherInstance2 = OtherModel.__create();
+        const otherInstance3 = OtherModel.__create();
+        ThroughModel.create({ ModelId: 1, OtherModelId: 1 });
+        ThroughModel.create({ ModelId: 1, OtherModelId: 2 });
+        ThroughModel.create({ ModelId: 1, OtherModelId: 3 });
+
+        await instance.removeOtherModels([otherInstance1]);
+        expect(ThroughModel.__findOne({ where: { ModelId: 1, OtherModelId: 1 } })).toBeFalsy();
+        expect(ThroughModel.__findOne({ where: { ModelId: 1, OtherModelId: 2 } })).toBeTruthy();
+        expect(ThroughModel.__findOne({ where: { ModelId: 1, OtherModelId: 3 } })).toBeTruthy();
+
+
+        await instance.removeOtherModels([otherInstance2, otherInstance3]);
+        expect(ThroughModel.__findOne({ where: { ModelId: 1, OtherModelId: 1 } })).toBeFalsy();
+        expect(ThroughModel.__findOne({ where: { ModelId: 1, OtherModelId: 2 } })).toBeFalsy();
+        expect(ThroughModel.__findOne({ where: { ModelId: 1, OtherModelId: 3 } })).toBeFalsy();
+      });
+    });
+
+    describe('.setOTHERS()', () => {
+      it('sets which remote instances are associated with this one', async () => {
+        const { Model, OtherModel, ThroughModel } = makeAssociatedModels();
+        const instance = Model.__create();
+
+        const otherInstance1 = OtherModel.__create();
+        await instance.setOtherModels(otherInstance1);
+        expect(ThroughModel.__findOne({ where: { ModelId: 1, OtherModelId: 1 } })).toBeTruthy();
+
+        const otherInstance2 = OtherModel.__create();
+        await instance.setOtherModels([otherInstance2]);
+        expect(ThroughModel.__findOne({ where: { ModelId: 1, OtherModelId: 1 } })).toBeFalsy();
+        expect(ThroughModel.__findOne({ where: { ModelId: 1, OtherModelId: 2 } })).toBeTruthy();
+
+        await instance.setOtherModels(null);
+        expect(ThroughModel.__findOne({ where: { ModelId: 1, OtherModelId: 1 } })).toBeFalsy();
+        expect(ThroughModel.__findOne({ where: { ModelId: 1, OtherModelId: 2 } })).toBeFalsy();
+      });
+    });
+
+    describe('.getOTHERS()', () => {
+      it('returns the remote instance', async () => {
+        const { Model, OtherModel, ThroughModel } = makeAssociatedModels();
+
+        const instance = Model.__create();
+        const otherInstance1 = OtherModel.__create();
+        const otherInstance2 = OtherModel.__create();
+
+        await expect(instance.getOtherModels()).resolves.toEqual([]);
+        ThroughModel.create({ ModelId: 1, OtherModelId: 1 });
+        ThroughModel.create({ ModelId: 1, OtherModelId: 2 });
+
+        const instance_otherInstances = await instance.getOtherModels();
+        expect(instance_otherInstances).toBeInstanceOf(Array);
+        expect(instance_otherInstances.length).toBe(2);
+        expect(instance_otherInstances[0]).toBeInstanceOf(OtherModel);
+        expect(instance_otherInstances[1]).toBeInstanceOf(OtherModel);
+        expect(instance_otherInstances[0].get()).toEqual(otherInstance1.get());
+        expect(instance_otherInstances[1].get()).toEqual(otherInstance2.get());
+      });
+    });
+  });
+
+  describe('::hasOne()', () => {
+    const makeAssociatedModels = (models = {}) => {
+      ModelMock(() => ({
+        name: 'Model',
+        definition: {
+          id: { type: NUMBER, primaryKey: true },
+          foo: { type: STRING },
+        },
+        associations: {
+          OtherModel: (self, target) => self.hasOne(target, {
+            as: 'otherModel',
+            foreignKey: 'ModelFoo',
+            sourceKey: 'foo',
+          }),
+        },
+      }), 0, models);
+
+      ModelMock(() => ({
+        name: 'OtherModel',
+        definition: {
+          ModelFoo: { type: STRING },
+        },
+      }), 0, models);
+
+      return models;
+    };
+
+    it('configures a 1:1 association', () => {
+      const Model = ModelMock(() => ({
+        name: 'Model',
+        definition: {
+          id: { type: NUMBER, primaryKey: true },
+          parent: { type: NUMBER },
+          otherModelId: { type: NUMBER },
+        },
+        associations: {
+          Model: (self, target) => self.hasOne(target, {
+            as: 'child',
+            foreignKey: {
+              name: 'parent',
+              allowNull: true,
+              type: NUMBER,
+            },
+            sourceKey: 'id',
+          }),
+        },
+      }));
+      expect(Model.__associations).toEqual([{
+        options: {
+          as: 'child',
+          foreignKey: {
+            name: 'parent',
+            allowNull: true,
+            type: NUMBER,
+          },
+          sourceKey: 'id',
+        },
+        target: Model,
+        type: 'hasOne',
+        methods: {
+          getChild: expect.any(Function),
+          setChild: expect.any(Function),
+          createChild: expect.any(Function),
+        },
+      }]);
+
+      Model.hasOne(Model, {
+        as: 'otherModel',
+        foreignKey: 'otherModelId',
+        sourceKey: 'id',
+      });
+      expect(Model.__associations[1].options).toEqual({
+        as: 'otherModel',
+        foreignKey: {
+          name: 'otherModelId',
+          allowNull: true,
+          type: NUMBER,
+        },
+        sourceKey: 'id',
+      });
+
+      Model.hasOne(Model);
+      expect(Model.__associations[2].options).toEqual({
+        as: 'Model',
+        foreignKey: {
+          name: 'ModelId',
+          allowNull: true,
+          type: NUMBER,
+        },
+        sourceKey: 'id',
+      });
+
+      const instance = Model.__create({ id: 1 });
+      expect(instance).toHaveProperty('getChild', expect.any(Function));
+      expect(instance).toHaveProperty('setChild', expect.any(Function));
+      expect(instance).toHaveProperty('createChild', expect.any(Function));
+    });
+
+    describe('.createOTHER()', () => {
+      it('creates a remote instance and associates it with this one', async () => {
+        const { Model, OtherModel } = makeAssociatedModels();
+        const instance = Model.__create({ id: 1, foo: 'bar' });
+        const otherInstance = await instance.createOtherModel();
+        expect(otherInstance).toBeInstanceOf(OtherModel);
+        expect(otherInstance.get()).toEqual({ ModelFoo: 'bar' });
+      });
+    });
+
+    describe('.setOTHER()', () => {
+      it('associates the remote instance', async () => {
+        const { Model, OtherModel } = makeAssociatedModels();
+        const instance = Model.__create({ id: 1, foo: 'bar' });
+
+        const otherInstance1 = OtherModel.__create();
+        await instance.setOtherModel(otherInstance1);
+        otherInstance1.__reload();
+        expect(otherInstance1.ModelFoo).toBe('bar');
+
+        const otherInstance2 = OtherModel.__create();
+        await instance.setOtherModel(otherInstance2);
+        otherInstance2.__reload();
+        expect(otherInstance2.ModelFoo).toBe('bar');
+        otherInstance1.__reload();
+        expect(otherInstance1.ModelFoo).toBe(null);
+
+        await instance.setOtherModel(null);
+        otherInstance2.__reload();
+        expect(otherInstance2.ModelFoo).toBe(null);
+      });
+    });
+
+    describe('.getOTHER()', () => {
+      it('returns the remote instance', async () => {
+        const { Model, OtherModel } = makeAssociatedModels();
+
+        const instance = Model.__create({ id: 1, foo: 'bar' });
+
+        await expect(instance.getOtherModel()).resolves.toBe(null);
+        const otherInstance = OtherModel.__create({ ModelFoo: 'bar' });
+
+        const instance_otherInstance = await instance.getOtherModel();
+        expect(instance_otherInstance).toBeInstanceOf(OtherModel);
+        expect(instance_otherInstance.get()).toEqual(otherInstance.get());
+      });
+    });
+  });
+
+  describe('::hasMany()', () => {
+    const makeAssociatedModels = (models = {}) => {
+      ModelMock(() => ({
+        name: 'Model',
+        definition: {
+          id: { type: NUMBER, primaryKey: true },
+          foo: { type: STRING },
+        },
+        associations: {
+          OtherModel: (self, target) => self.hasMany(target, {
+            as: 'otherModels',
+            foreignKey: 'ModelFoo',
+            sourceKey: 'foo',
+          }),
+        },
+      }), 0, models);
+
+      ModelMock(() => ({
+        name: 'OtherModel',
+        definition: {
+          id: { type: NUMBER, primaryKey: true, autoIncrement: true },
+          ModelFoo: { type: STRING },
+        },
+      }), 0, models);
+
+      return models;
+    };
+
+    it('configures a 1:M association', () => {
+      const Model = ModelMock(() => ({
+        name: 'Model',
+        definition: {
+          id: { type: NUMBER, primaryKey: true },
+          parent: { type: NUMBER },
+          otherModelId: { type: NUMBER },
+        },
+        associations: {
+          Model: (self, target) => self.hasMany(target, {
+            as: 'children',
+            foreignKey: {
+              name: 'parent',
+              allowNull: true,
+              type: NUMBER,
+            },
+            sourceKey: 'id',
+          }),
+        },
+      }));
+      expect(Model.__associations).toEqual([{
+        options: {
+          as: 'children',
+          foreignKey: {
+            name: 'parent',
+            allowNull: true,
+            type: NUMBER,
+          },
+          sourceKey: 'id',
+        },
+        target: Model,
+        type: 'hasMany',
+        methods: {
+          getChildren: expect.any(Function),
+          countChildren: expect.any(Function),
+          hasChild: expect.any(Function),
+          hasChildren: expect.any(Function),
+          setChildren: expect.any(Function),
+          addChild: expect.any(Function),
+          addChildren: expect.any(Function),
+          removeChild: expect.any(Function),
+          removeChildren: expect.any(Function),
+          createChild: expect.any(Function),
+        },
+      }]);
+
+      Model.hasMany(Model, {
+        as: 'otherModels',
+        foreignKey: 'otherModelId',
+        sourceKey: 'id',
+      });
+      expect(Model.__associations[1].options).toEqual({
+        as: 'otherModels',
+        foreignKey: {
+          name: 'otherModelId',
+          allowNull: true,
+          type: NUMBER,
+        },
+        sourceKey: 'id',
+      });
+
+      Model.hasMany(Model);
+      expect(Model.__associations[2].options).toEqual({
+        as: 'Models',
+        foreignKey: {
+          name: 'ModelId',
+          allowNull: true,
+          type: NUMBER,
+        },
+        sourceKey: 'id',
+      });
+
+      const instance = Model.__create({ id: 1 });
+      expect(instance).toHaveProperty('getChildren', expect.any(Function));
+      expect(instance).toHaveProperty('countChildren', expect.any(Function));
+      expect(instance).toHaveProperty('hasChild', expect.any(Function));
+      expect(instance).toHaveProperty('hasChildren', expect.any(Function));
+      expect(instance).toHaveProperty('setChildren', expect.any(Function));
+      expect(instance).toHaveProperty('addChild', expect.any(Function));
+      expect(instance).toHaveProperty('addChildren', expect.any(Function));
+      expect(instance).toHaveProperty('removeChild', expect.any(Function));
+      expect(instance).toHaveProperty('removeChildren', expect.any(Function));
+      expect(instance).toHaveProperty('createChild', expect.any(Function));
+    });
+
+    describe('.createOTHER()', () => {
+      it('creates a remote instance and associates it with this one', async () => {
+        const { Model, OtherModel } = makeAssociatedModels();
+        const instance = Model.__create({ id: 1, foo: 'bar' });
+
+        const otherInstance1 = await instance.createOtherModel({ id: 1 });
+        expect(otherInstance1).toBeInstanceOf(OtherModel);
+        expect(otherInstance1.get()).toEqual({ id: 1, ModelFoo: 'bar' });
+
+        const otherInstance2 = await instance.createOtherModel();
+        expect(otherInstance2).toBeInstanceOf(OtherModel);
+        expect(otherInstance2.get()).toEqual({ id: 2, ModelFoo: 'bar' });
+
+        otherInstance1.__reload();
+        expect(otherInstance1.ModelFoo).toBe('bar');
+      });
+    });
+
+    describe('.countOTHERS()', () => {
+      it('returns the number of remote instances associated with this one', async () => {
+        const { Model, OtherModel } = makeAssociatedModels();
+        const instance = Model.__create({ id: 1, foo: 'bar' });
+
+        await expect(instance.countOtherModels()).resolves.toBe(0);
+
+        OtherModel.__create({ ModelFoo: 'bar' });
+        await expect(instance.countOtherModels()).resolves.toBe(1);
+
+        OtherModel.__create({ ModelFoo: 'bar' });
+        await expect(instance.countOtherModels()).resolves.toBe(2);
+      });
+    });
+
+    describe('.hasOTHER()', () => {
+      it('returns whether the remote instance is associated with this one', async () => {
+        const { Model, OtherModel } = makeAssociatedModels();
+        const instance = Model.__create({ id: 1, foo: 'bar' });
+
+        const otherInstance1 = OtherModel.__create({ ModelFoo: 'bar' });
+        await expect(instance.hasOtherModel(otherInstance1)).resolves.toBe(true);
+
+        const otherInstance2 = OtherModel.__create();
+        await expect(instance.hasOtherModel(otherInstance2)).resolves.toBe(false);
+      });
+    });
+
+    describe('.hasOTHERS()', () => {
+      it('returns whether all remote instances are associated with this one', async () => {
+        const { Model, OtherModel } = makeAssociatedModels();
+        const instance = Model.__create({ id: 1, foo: 'bar' });
+
+        const otherInstance1 = OtherModel.__create({ ModelFoo: 'bar' });
+        await expect(instance.hasOtherModels([otherInstance1])).resolves.toBe(true);
+
+        const otherInstance2 = OtherModel.__create();
+        await expect(instance.hasOtherModels([otherInstance1, otherInstance2])).resolves.toBe(false);
+
+        otherInstance2.__update({ ModelFoo: 'bar' });
+        await expect(instance.hasOtherModels([otherInstance1, otherInstance2])).resolves.toBe(true);
+      });
+    });
+
+    describe('.addOTHER()', () => {
+      it('associates the remote instance with this one', async () => {
+        const { Model, OtherModel } = makeAssociatedModels();
+        const instance = Model.__create({ id: 1, foo: 'bar' });
+
+        const otherInstance1 = OtherModel.__create();
+        await instance.addOtherModel(otherInstance1);
+        otherInstance1.__reload();
+        expect(otherInstance1.ModelFoo).toBe('bar');
+
+        const otherInstance2 = OtherModel.__create();
+        await instance.addOtherModel(otherInstance2);
+        otherInstance2.__reload();
+        expect(otherInstance2.ModelFoo).toBe('bar');
+
+        otherInstance1.__reload();
+        expect(otherInstance1.ModelFoo).toBe('bar');
+      });
+    });
+
+    describe('.addOTHERS()', () => {
+      it('associates the remote instances with this one', async () => {
+        const { Model, OtherModel } = makeAssociatedModels();
+        const instance = Model.__create({ id: 1, foo: 'bar' });
+
+        const otherInstance1 = OtherModel.__create();
+        await instance.addOtherModels([otherInstance1]);
+        otherInstance1.__reload();
+        expect(otherInstance1.ModelFoo).toBe('bar');
+
+        const otherInstance2 = OtherModel.__create();
+        const otherInstance3 = OtherModel.__create();
+        await instance.addOtherModels([otherInstance2, otherInstance3]);
+        otherInstance2.__reload();
+        expect(otherInstance2.ModelFoo).toBe('bar');
+        otherInstance3.__reload();
+        expect(otherInstance3.ModelFoo).toBe('bar');
+
+        otherInstance1.__reload();
+        expect(otherInstance1.ModelFoo).toBe('bar');
+      });
+    });
+
+    describe('.removeOTHER()', () => {
+      it('disassociates the remote instance from this one', async () => {
+        const { Model, OtherModel } = makeAssociatedModels();
+        const instance = Model.__create({ id: 1, foo: 'bar' });
+
+        const otherInstance = OtherModel.__create({ ModelFoo: 'bar' });
+        await instance.removeOtherModel(otherInstance);
+        otherInstance.__reload();
+        expect(otherInstance.ModelFoo).toBe(null);
+      });
+    });
+
+    describe('.removeOTHERS()', () => {
+      it('disassociates the remote instances from this one', async () => {
+        const { Model, OtherModel } = makeAssociatedModels();
+        const instance = Model.__create({ id: 1, foo: 'bar' });
+
+        const otherInstance1 = OtherModel.__create({ ModelFoo: 'bar' });
+        const otherInstance2 = OtherModel.__create({ ModelFoo: 'bar' });
+        const otherInstance3 = OtherModel.__create({ ModelFoo: 'bar' });
+
+        await instance.removeOtherModels([otherInstance1]);
+        otherInstance1.__reload();
+        expect(otherInstance1.ModelFoo).toBe(null);
+        otherInstance2.__reload();
+        expect(otherInstance2.ModelFoo).toBe('bar');
+        otherInstance3.__reload();
+        expect(otherInstance3.ModelFoo).toBe('bar');
+
+
+        await instance.removeOtherModels([otherInstance2, otherInstance3]);
+        otherInstance1.__reload();
+        expect(otherInstance1.ModelFoo).toBe(null);
+        otherInstance2.__reload();
+        expect(otherInstance2.ModelFoo).toBe(null);
+        otherInstance3.__reload();
+        expect(otherInstance3.ModelFoo).toBe(null);
+      });
+    });
+
+    describe('.setOTHERS()', () => {
+      it('sets which remote instances are associated with this one', async () => {
+        const { Model, OtherModel } = makeAssociatedModels();
+        const instance = Model.__create({ id: 1, foo: 'bar' });
+
+        const otherInstance1 = OtherModel.__create();
+        await instance.setOtherModels(otherInstance1);
+        otherInstance1.__reload();
+        expect(otherInstance1.ModelFoo).toBe('bar');
+
+        const otherInstance2 = OtherModel.__create();
+        await instance.setOtherModels([otherInstance2]);
+        otherInstance2.__reload();
+        expect(otherInstance2.ModelFoo).toBe('bar');
+        otherInstance1.__reload();
+        expect(otherInstance1.ModelFoo).toBe(null);
+
+        await instance.setOtherModels(null);
+        otherInstance2.__reload();
+        expect(otherInstance2.ModelFoo).toBe(null);
+      });
+    });
+
+    describe('.getOTHERS()', () => {
+      it('returns the remote instance', async () => {
+        const { Model, OtherModel } = makeAssociatedModels();
+
+        const instance = Model.__create({ id: 1, foo: 'bar' });
+
+        await expect(instance.getOtherModels()).resolves.toEqual([]);
+        const otherInstance1 = OtherModel.__create({ ModelFoo: 'bar' });
+        const otherInstance2 = OtherModel.__create({ ModelFoo: 'bar' });
+
+        const instance_otherInstances = await instance.getOtherModels();
+        expect(instance_otherInstances).toBeInstanceOf(Array);
+        expect(instance_otherInstances.length).toBe(2);
+        expect(instance_otherInstances[0]).toBeInstanceOf(OtherModel);
+        expect(instance_otherInstances[1]).toBeInstanceOf(OtherModel);
+        expect(instance_otherInstances[0].get()).toEqual(otherInstance1.get());
+        expect(instance_otherInstances[1].get()).toEqual(otherInstance2.get());
+      });
     });
   });
 

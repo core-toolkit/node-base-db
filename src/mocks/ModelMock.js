@@ -1,9 +1,153 @@
 const { Op } = require('sequelize');
+const { camelize, pluralize, singularize } = require('sequelize/dist/lib/utils');
 const DataTypes = require('./DataTypesMock');
 const { deepCopy, deepEquals } = require('node-base/src/utils/Obj');
 
-module.exports = function (makeFn, seed = 0) {
+const toInstanceArray = (instances) => (instances ? [].concat(instances) : []);
+
+const makeFk = (spec, target, fk, as, allowNull = true) => {
+  if (!spec?.name) {
+    spec = { name: spec };
+  }
+  spec.name ??= camelize(`${singularize(as)}_${fk}`);
+  spec.type ??= target.__schema[fk].type;
+  spec.allowNull ??= allowNull;
+  return spec;
+};
+
+const AssocMethods = {
+  get: ({ options, target, type }, instance) => () => {
+    const where = {};
+    if (type === 'belongsToMany') {
+      const throughs = options.through.model.__findAll({
+        where: {
+          [options.foreignKey.name]: instance.get(options.sourceKey),
+        },
+      });
+      where[options.targetKey] = throughs.map((through) => through.get(options.otherKey.name));
+    } else if (type === 'belongsTo') {
+      where[options.targetKey] = instance.get(options.foreignKey.name);
+    } else {
+      where[options.foreignKey.name] = instance.get(options.sourceKey);
+    }
+    return target[`__find${type.endsWith('Many') ? 'All' : 'One'}`]({ where });
+  },
+  set: ({ options, target, type }, instance) => (others) => {
+    const [other] = others = toInstanceArray(others);
+    if (type === 'belongsTo') {
+      const otherKey = other?.[options.targetKey] ?? null;
+
+      if (otherKey) {
+        instance.__Model.__update({ [options.foreignKey.name]: null }, {
+          where: {
+            [options.foreignKey.name]: otherKey,
+          },
+        });
+      }
+      instance.__update({ [options.foreignKey.name]: otherKey });
+    } else if (type === 'belongsToMany') {
+      options.through.model.__destroy({
+        where: {
+          [options.foreignKey.name]: instance.get(options.sourceKey),
+        },
+      });
+      for (const other of others) {
+        options.through.model.__create({
+          [options.foreignKey.name]: instance.get(options.sourceKey),
+          [options.otherKey.name]: other.get(options.targetKey),
+        });
+      }
+    } else {
+      target.__update({ [options.foreignKey.name]: null }, {
+        where: {
+          [options.foreignKey.name]: instance.get(options.sourceKey),
+        },
+      });
+      for (const other of others) {
+        other.__update({ [options.foreignKey.name]: instance.get(options.sourceKey) });
+      }
+    }
+  },
+  count: (association, instance) => () => AssocMethods.get(association, instance)().length,
+  has: ({ options, type }, instance) => (others) => {
+    for (const other of toInstanceArray(others)) {
+      if (type === 'belongsToMany') {
+        const through = options.through.model.__findOne({
+          where: {
+            [options.foreignKey.name]: instance.get(options.sourceKey),
+            [options.otherKey.name]: other.get(options.targetKey),
+          },
+        });
+        if (!through) {
+          return false;
+        }
+      } else {
+        if (other.get(options.foreignKey.name) !== instance.get(options.sourceKey)) {
+          return false;
+        }
+      }
+    }
+    return true;
+  },
+  add: ({ options, type }, instance) => (others) => {
+    for (const other of toInstanceArray(others)) {
+      if (type === 'belongsToMany') {
+        options.through.model.__create({
+          [options.foreignKey.name]: instance.get(options.sourceKey),
+          [options.otherKey.name]: other.get(options.targetKey),
+        });
+      } else {
+        other.__update({ [options.foreignKey.name]: instance.get(options.sourceKey) });
+      }
+    }
+  },
+  remove: ({ options, type }, instance) => (others) => {
+    for (const other of toInstanceArray(others)) {
+      if (type === 'belongsToMany') {
+        options.through.model.__destroy({
+          where: {
+            [options.foreignKey.name]: instance.get(options.sourceKey),
+            [options.otherKey.name]: other.get(options.targetKey),
+          },
+        });
+      } else {
+        other.__update({ [options.foreignKey.name]: null });
+      }
+    }
+  },
+  create: ({ options, target, type }, instance) => (values = {}) => {
+    values = { ...values };
+
+    if (type !== 'belongsToMany') {
+      values[options.foreignKey.name] = instance.get(options.sourceKey);
+    }
+
+    if (type === 'hasOne') {
+      target.__update({ [options.foreignKey.name]: null }, {
+        where: {
+          [options.foreignKey.name]: instance.get(options.sourceKey),
+        },
+      });
+    }
+
+    const other = target.__create(values);
+
+    if (type === 'belongsTo') {
+      instance.__update({ [options.foreignKey.name]: other[options.targetKey] });
+    } else if (type === 'belongsToMany') {
+      options.through.model.__create({
+        [options.foreignKey.name]: instance.get(options.sourceKey),
+        [options.otherKey.name]: other.get(options.targetKey),
+      });
+    }
+
+    return other;
+  },
+};
+
+module.exports = function MakeModel(makeFn, seed = 0, models = {}) {
   const {
+    associations = {},
     definition: schema,
     name: modelName,
   } = typeof makeFn === 'function' ? makeFn(DataTypes) : { definition: deepCopy(makeFn) };
@@ -111,7 +255,10 @@ module.exports = function (makeFn, seed = 0) {
     static __schema = schema;
     static __fields = fields;
     static __primary = primary;
+    static __associations = [];
+    static __pendingAssociations = associations;
 
+    __Model = Model;
     _previousDataValues = {};
     dataValues = {};
     isNewRecord = true;
@@ -189,6 +336,124 @@ module.exports = function (makeFn, seed = 0) {
       }
     }
 
+    static __belongsTo(target, options = {}) {
+      options.as ??= singularize(target.name);
+
+      options.targetKey ??= target.__primary;
+
+      options.foreignKey = makeFk(options.foreignKey, target, options.targetKey, options.as);
+
+      this.__associations.push({
+        options,
+        target,
+        type: 'belongsTo',
+        methods: {
+          [camelize(`get_${singularize(options.as)}`)]: AssocMethods.get,
+          [camelize(`set_${singularize(options.as)}`)]: AssocMethods.set,
+          [camelize(`create_${singularize(options.as)}`)]: AssocMethods.create,
+        },
+      });
+    }
+
+    static __hasOne(target, options = {}) {
+      options.as ??= singularize(target.name);
+
+      options.sourceKey ??= primary;
+
+      options.foreignKey = makeFk(options.foreignKey, this, options.sourceKey, this.name);
+
+      this.__associations.push({
+        options,
+        target,
+        type: 'hasOne',
+        methods: {
+          [camelize(`get_${singularize(options.as)}`)]: AssocMethods.get,
+          [camelize(`set_${singularize(options.as)}`)]: AssocMethods.set,
+          [camelize(`create_${singularize(options.as)}`)]: AssocMethods.create,
+        },
+      });
+    }
+
+    static __hasMany(target, options = {}) {
+      options.as ??= pluralize(target.name);
+
+      options.sourceKey ??= primary;
+
+      options.foreignKey = makeFk(options.foreignKey, this, options.sourceKey, this.name);
+
+      const asPlural = pluralize(options.as);
+      const asSingular = singularize(options.as);
+
+      this.__associations.push({
+        options,
+        target,
+        type: 'hasMany',
+        methods: {
+          [camelize(`get_${asPlural}`)]: AssocMethods.get,
+          [camelize(`count_${asPlural}`)]: AssocMethods.count,
+          [camelize(`has_${asSingular}`)]: AssocMethods.has,
+          [camelize(`has_${asPlural}`)]: AssocMethods.has,
+          [camelize(`set_${asPlural}`)]: AssocMethods.set,
+          [camelize(`add_${asSingular}`)]: AssocMethods.add,
+          [camelize(`add_${asPlural}`)]: AssocMethods.add,
+          [camelize(`remove_${asSingular}`)]: AssocMethods.remove,
+          [camelize(`remove_${asPlural}`)]: AssocMethods.remove,
+          [camelize(`create_${asSingular}`)]: AssocMethods.create,
+        },
+      });
+    }
+
+    static __belongsToMany(target, options) {
+      options.as ??= pluralize(target.name);
+
+      options.targetKey ??= target.__primary;
+
+      options.otherKey = makeFk(options.otherKey, target, options.targetKey, target === this ? options.as : target.name, false);
+
+      options.sourceKey ??= primary;
+
+      options.foreignKey = makeFk(options.foreignKey, this, options.sourceKey, this.name, false);
+
+      if (!options.through.model) {
+        options.through = { model: options.through };
+      }
+      if (typeof options.through.model === 'string') {
+        options.through.model = models[options.through.model] ?? MakeModel(() => ({
+          name: options.through.model,
+          definition: {
+            [options.foreignKey.name]: {
+              allowNull: options.foreignKey.allowNull,
+              type: options.foreignKey.type,
+            },
+            [options.otherKey.name]: {
+              allowNull: options.otherKey.allowNull,
+              type: options.otherKey.type,
+            },
+          },
+        }), 0, models);
+      }
+      const asPlural = pluralize(options.as);
+      const asSingular = singularize(options.as);
+
+      this.__associations.push({
+        options,
+        target,
+        type: 'belongsToMany',
+        methods: {
+          [camelize(`get_${asPlural}`)]: AssocMethods.get,
+          [camelize(`count_${asPlural}`)]: AssocMethods.count,
+          [camelize(`has_${asSingular}`)]: AssocMethods.has,
+          [camelize(`has_${asPlural}`)]: AssocMethods.has,
+          [camelize(`set_${asPlural}`)]: AssocMethods.set,
+          [camelize(`add_${asSingular}`)]: AssocMethods.add,
+          [camelize(`add_${asPlural}`)]: AssocMethods.add,
+          [camelize(`remove_${asSingular}`)]: AssocMethods.remove,
+          [camelize(`remove_${asPlural}`)]: AssocMethods.remove,
+          [camelize(`create_${asSingular}`)]: AssocMethods.create,
+        },
+      });
+    }
+
     static __findByPk(id) {
       return this.__findOne({ where: { [primary]: id }});
     }
@@ -218,6 +483,10 @@ module.exports = function (makeFn, seed = 0) {
     }
 
     static mockClear() {
+      this.belongsTo.mockClear();
+      this.belongsToMany.mockClear();
+      this.hasOne.mockClear();
+      this.hasMany.mockClear();
       this.build.mockClear();
       this.create.mockClear();
       this.findByPk.mockClear();
@@ -244,6 +513,13 @@ module.exports = function (makeFn, seed = 0) {
 
       for (const field of fields) {
         this.dataValues[field] = deepCopy(data[field]) ?? null;
+      }
+
+      for (const association of Model.__associations) {
+        for (const method of Object.keys(association.methods)) {
+          this[`__${method}`] = association.methods[method](association, this);
+          this[method] = jest.fn(async (...args) => this[`__${method}`](...args));
+        }
       }
 
       return new Proxy(this, {
@@ -329,6 +605,26 @@ module.exports = function (makeFn, seed = 0) {
       }
       Object.assign(this._previousDataValues, deepCopy(this.dataValues));
     }
+
+    /**
+     * @type {(target: Model, options: Object.<string, any>) => void}
+     */
+    static belongsTo = jest.fn((...args) => this.__belongsTo(...args));
+
+    /**
+     * @type {(target: Model, options: Object.<string, any>) => void}
+     */
+    static belongsToMany = jest.fn((...args) => this.__belongsToMany(...args));
+
+    /**
+     * @type {(target: Model, options: Object.<string, any>) => void}
+     */
+    static hasOne = jest.fn((...args) => this.__hasOne(...args));
+
+    /**
+     * @type {(target: Model, options: Object.<string, any>) => void}
+     */
+    static hasMany = jest.fn((...args) => this.__hasMany(...args));
 
     /**
      * @type {(data: Object.<string, any>) => Model}
@@ -420,6 +716,16 @@ module.exports = function (makeFn, seed = 0) {
 
   if (modelName) {
     Object.defineProperty(Model, 'name', { value: modelName });
+    models[modelName] = Model;
+  }
+
+  for (const self of Object.keys(models)) {
+    for (const target of Object.keys(models[self].__pendingAssociations)) {
+      if (target in models) {
+        models[self].__pendingAssociations[target](models[self], models[target]);
+        delete models[self].__pendingAssociations[target];
+      }
+    }
   }
 
   return Model;
