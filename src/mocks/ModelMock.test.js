@@ -210,7 +210,7 @@ describe('ModelMock', () => {
     Model.__create({ id: 5, foo: '123', baz: '123' });
 
     it('returns a single record', () => {
-      const record = Model.__query().next().value;
+      const [record] = Model.__query();
       expect(record).toBeInstanceOf(Model);
       expect(record.get()).toEqual({ id: 1, foo: 'bar', baz: 'qux' });
     });
@@ -251,6 +251,20 @@ describe('ModelMock', () => {
         { id: 3, foo: 'bar', baz: 'qux' },
         { id: 1, foo: 'bar', baz: 'qux' },
       ]);
+    });
+
+    it('only includes the selected attributes', () => {
+      const [record] = Model.__query({ where: { id: 1 }, attributes: ['foo'] });
+      expect(record.id).toBe(undefined);
+      expect(record.foo).toBe('bar');
+      expect(record.baz).toBe(undefined);
+    });
+
+    it('excludes the selected attributes', () => {
+      const [record] = Model.__query({ where: { id: 1 }, attributes: { exclude: ['foo'] } });
+      expect(record.id).toBe(1);
+      expect(record.foo).toBe(undefined);
+      expect(record.baz).toBe('qux');
     });
 
     it('returns all records matching the specified query', () => {
@@ -1791,6 +1805,14 @@ describe('ModelMock', () => {
       expect(instance.changed('foo')).toBe(false);
     });
 
+    it('returns false when calling with an unchanged excluded field', async () => {
+      const Model = ModelMock({ foo: { type: STRING }, baz: { type: STRING } });
+      Model.__create({ foo: 'bar', baz: 'qux' });
+
+      const instance = Model.__findOne({ attributes: ['foo'] });
+      expect(instance.changed('baz')).toBe(false);
+    });
+
     it('returns all changed fields when calling without an argument', () => {
       const Model = ModelMock({ foo: { type: NUMBER }, bar: { type: NUMBER }, baz: { type: NUMBER } });
       const instance = Model.__create({ foo: 1, bar: 2, baz: 3 });
@@ -1916,6 +1938,17 @@ describe('ModelMock', () => {
       const Model = ModelMock({ foo: { unique: true, type: STRING } });
       const instance = Model.__create({ foo: 'bar' });
       await instance.save();
+    });
+
+    it('persists instances with an unchanged excluded field', async () => {
+      const Model = ModelMock({ foo: { type: STRING }, baz: { type: STRING } });
+      Model.__create({ foo: 'bar', baz: 'qux' });
+      const instance = Model.__findOne({ attributes: ['foo'] });
+      instance.foo = 'quux';
+      await instance.save();
+
+      const updated = Model.__findOne().get();
+      expect(updated).toEqual({ foo: 'quux', baz: 'qux' });
     });
 
     it('does not persist an instances with an "allowNull" field set to null', async () => {

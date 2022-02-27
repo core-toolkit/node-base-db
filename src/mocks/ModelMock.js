@@ -311,6 +311,7 @@ module.exports = function MakeModel(makeFn, seed = 0, models = {}) {
     static * __query(options = {}) {
       const {
         where = {},
+        attributes = fields,
       } = options;
 
       let {
@@ -318,6 +319,8 @@ module.exports = function MakeModel(makeFn, seed = 0, models = {}) {
         offset = 0,
         order = [],
       } = options;
+
+      const selectFields = attributes.exclude ? fields.filter((field) => !attributes.exclude.includes(field)) : attributes;
 
       const records = [...this.__records.values()];
       if (order.length) {
@@ -337,7 +340,7 @@ module.exports = function MakeModel(makeFn, seed = 0, models = {}) {
         if (match(row, null, null, where)) {
           if (offset-- > 0) continue;
 
-          yield new this(row, { isNewRecord: false });
+          yield new this(row, { isNewRecord: false }, { selectFields });
 
           if (--limit === 0) break;
         }
@@ -512,14 +515,14 @@ module.exports = function MakeModel(makeFn, seed = 0, models = {}) {
       this.__seed(seed);
     }
 
-    constructor(data = {}, options = {}) {
+    constructor(data = {}, options = {}, { selectFields = fields } = {}) {
       this.isNewRecord = options.isNewRecord ?? true;
 
       if (!this.isNewRecord) {
         this._previousDataValues = data;
       }
 
-      for (const field of fields) {
+      for (const field of selectFields) {
         this.dataValues[field] = deepCopy(data[field]) ?? null;
       }
 
@@ -564,7 +567,7 @@ module.exports = function MakeModel(makeFn, seed = 0, models = {}) {
 
     __changed(key) {
       if (fields.includes(key)) {
-        return !deepEquals(this.dataValues[key], this._previousDataValues[key]);
+        return (key in this.dataValues) && !deepEquals(this.dataValues[key], this._previousDataValues[key]);
       }
       return fields.filter((field) => this.__changed(field));
     }
@@ -592,6 +595,9 @@ module.exports = function MakeModel(makeFn, seed = 0, models = {}) {
 
     __save() {
       for (const field of fields) {
+        if (!(field in this.dataValues) && !this.isNewRecord) {
+          continue;
+        }
         const def = schema[field];
         this.dataValues[field] ??= typeof def.defaultValue === 'function' ? def.defaultValue() : def.defaultValue;
         if (!def.allowNull && this.dataValues[field] === null && !(def.autoIncrement && this.isNewRecord)) {
