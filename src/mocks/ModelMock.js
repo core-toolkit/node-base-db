@@ -24,7 +24,7 @@ const makeFk = (spec, target, fk, as, allowNull = true) => {
 };
 
 const AssocMethods = {
-  get: ({ options, target, type }, instance) => () => {
+  get: ({ options, target, type }, instance) => (opts = {}) => {
     const where = {};
     if (type === 'belongsToMany') {
       const throughs = options.through.model.__findAll({
@@ -38,7 +38,7 @@ const AssocMethods = {
     } else {
       where[options.foreignKey.name] = instance.get(options.sourceKey);
     }
-    return target[`__find${type.endsWith('Many') ? 'All' : 'One'}`]({ where });
+    return target[`__find${type.endsWith('Many') ? 'All' : 'One'}`]({ ...opts, where });
   },
   set: ({ options, target, type }, instance) => (others) => {
     const [other] = others = toInstanceArray(others, target);
@@ -76,7 +76,7 @@ const AssocMethods = {
       }
     }
   },
-  count: (association, instance) => () => AssocMethods.get(association, instance)().length,
+  count: (association, instance) => (opts) => AssocMethods.get(association, instance)(opts).length,
   has: ({ options, target, type }, instance) => (others) => {
     for (const other of toInstanceArray(others, target)) {
       if (type === 'belongsToMany') {
@@ -554,10 +554,11 @@ module.exports = function MakeModel(makeFn, seed = 0, models = {}) {
           this[`__${alias}`] = AssocMethods[method](association, this);
           this[alias] = jest.fn(async (...args) => this[`__${alias}`](...args));
         }
-        if (this.__include.find((assoc) => assoc.as === association.options.as)) {
-          const { methods } = Model.__associations.find(({ options }) => options.as === association.options.as);
+        const include = this.__include.find((assoc) => assoc.as === association.options.as);
+        if (include) {
+          const { methods } = Model.__associations.find(({ options }) => options.as === include.as);
           const [alias] = methods.find(([, method]) => method === 'get');
-          this[association.options.as] = this[`__${alias}`]();
+          this[include.as] = this[`__${alias}`]({ attributes: include.attributes });
         }
       }
 

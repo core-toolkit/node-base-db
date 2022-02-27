@@ -344,6 +344,33 @@ describe('ModelMock', () => {
       expect(otherRecord.Models[0].equals(instance)).toBe(true);
     });
 
+    it('specifies the attributes on the included associations', () => {
+      const models = {};
+      ModelMock(() => ({
+        name: 'Model',
+        definition: {
+          id: { type: NUMBER, primaryKey: true, autoIncrement: true },
+        },
+        associations: {
+          Other: (self, target) => self.hasOne(target),
+        },
+      }), 0, models);
+      ModelMock(() => ({
+        name: 'Other',
+        definition: {
+          id: { type: NUMBER, primaryKey: true, autoIncrement: true },
+          ModelId: { type: NUMBER },
+        },
+      }), 0, models);
+
+      models.Model.__create();
+      models.Other.__create({ ModelId: 1 });
+
+      const [record] = models.Model.__query({ include: { as: 'Other', attributes: { exclude: ['id'] } } });
+      expect(record.Other.id).toBe(undefined);
+      expect(record.Other.ModelId).toBe(1);
+    });
+
     it('returns all records matching the specified query', () => {
       const records = [...Model.__query({
         where: {
