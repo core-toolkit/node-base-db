@@ -1835,10 +1835,10 @@ describe('ModelMock', () => {
       const instance = Model.build({ bar: 'baz' });
 
       const row = instance.get();
-      expect(row).toBe(instance.dataValues);
+      expect(row).toEqual(instance.dataValues);
     });
 
-    it('returns all associated instances via an alias', () => {
+    it('returns all associated instances', () => {
       const models = {};
       ModelMock(() => ({
         name: 'Model',
@@ -1869,6 +1869,9 @@ describe('ModelMock', () => {
       expect(otherInstances[1]).toBeInstanceOf(models.Other);
       expect(otherInstances[0].equals(otherInstance1)).toBe(true);
       expect(otherInstances[1].equals(otherInstance2)).toBe(true);
+
+      const row = record.get();
+      expect(row).toEqual({ id: 1, Others: otherInstances });
     });
   });
 

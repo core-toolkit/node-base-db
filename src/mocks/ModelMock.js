@@ -593,7 +593,14 @@ module.exports = function MakeModel(makeFn, seed = 0, models = {}) {
       if (this.__include.find((assoc) => assoc.as === key)) {
         return this[key];
       }
-      return fields.includes(key) ? this.dataValues[key] : this.dataValues;
+      if (fields.includes(key)) {
+        return this.dataValues[key];
+      }
+      const out = { ...this.dataValues };
+      for (const assoc of this.__include) {
+        out[assoc.as] = this[assoc.as];
+      }
+      return out;
     }
 
     __changed(key) {
