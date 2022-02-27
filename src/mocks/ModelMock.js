@@ -267,6 +267,8 @@ module.exports = function MakeModel(makeFn, seed = 0, models = {}) {
     static __pendingAssociations = associations;
 
     __Model = Model;
+    __include = [];
+
     _previousDataValues = {};
     dataValues = {};
     isNewRecord = true;
@@ -310,17 +312,20 @@ module.exports = function MakeModel(makeFn, seed = 0, models = {}) {
 
     static * __query(options = {}) {
       const {
+        include,
         where = {},
-        attributes = fields,
       } = options;
 
       let {
         limit = 0,
         offset = 0,
         order = [],
+        attributes = fields,
       } = options;
 
-      const selectFields = attributes.exclude ? fields.filter((field) => !attributes.exclude.includes(field)) : attributes;
+      if ('exclude' in attributes) {
+        attributes = fields.filter((field) => !attributes.exclude.includes(field));
+      }
 
       const records = [...this.__records.values()];
       if (order.length) {
@@ -340,7 +345,7 @@ module.exports = function MakeModel(makeFn, seed = 0, models = {}) {
         if (match(row, null, null, where)) {
           if (offset-- > 0) continue;
 
-          yield new this(row, { isNewRecord: false }, { selectFields });
+          yield new this(row, { include, isNewRecord: false }, { attributes });
 
           if (--limit === 0) break;
         }
@@ -358,11 +363,11 @@ module.exports = function MakeModel(makeFn, seed = 0, models = {}) {
         options,
         target,
         type: 'belongsTo',
-        methods: {
-          [camelize(`get_${singularize(options.as)}`)]: AssocMethods.get,
-          [camelize(`set_${singularize(options.as)}`)]: AssocMethods.set,
-          [camelize(`create_${singularize(options.as)}`)]: AssocMethods.create,
-        },
+        methods: [
+          [camelize(`get_${singularize(options.as)}`), 'get'],
+          [camelize(`set_${singularize(options.as)}`), 'set'],
+          [camelize(`create_${singularize(options.as)}`), 'create'],
+        ],
       });
     }
 
@@ -377,11 +382,11 @@ module.exports = function MakeModel(makeFn, seed = 0, models = {}) {
         options,
         target,
         type: 'hasOne',
-        methods: {
-          [camelize(`get_${singularize(options.as)}`)]: AssocMethods.get,
-          [camelize(`set_${singularize(options.as)}`)]: AssocMethods.set,
-          [camelize(`create_${singularize(options.as)}`)]: AssocMethods.create,
-        },
+        methods: [
+          [camelize(`get_${singularize(options.as)}`), 'get'],
+          [camelize(`set_${singularize(options.as)}`), 'set'],
+          [camelize(`create_${singularize(options.as)}`), 'create'],
+        ],
       });
     }
 
@@ -399,18 +404,18 @@ module.exports = function MakeModel(makeFn, seed = 0, models = {}) {
         options,
         target,
         type: 'hasMany',
-        methods: {
-          [camelize(`get_${asPlural}`)]: AssocMethods.get,
-          [camelize(`count_${asPlural}`)]: AssocMethods.count,
-          [camelize(`has_${asSingular}`)]: AssocMethods.has,
-          [camelize(`has_${asPlural}`)]: AssocMethods.has,
-          [camelize(`set_${asPlural}`)]: AssocMethods.set,
-          [camelize(`add_${asSingular}`)]: AssocMethods.add,
-          [camelize(`add_${asPlural}`)]: AssocMethods.add,
-          [camelize(`remove_${asSingular}`)]: AssocMethods.remove,
-          [camelize(`remove_${asPlural}`)]: AssocMethods.remove,
-          [camelize(`create_${asSingular}`)]: AssocMethods.create,
-        },
+        methods: [
+          [camelize(`get_${asPlural}`), 'get'],
+          [camelize(`count_${asPlural}`), 'count'],
+          [camelize(`has_${asSingular}`), 'has'],
+          [camelize(`has_${asPlural}`), 'has'],
+          [camelize(`set_${asPlural}`), 'set'],
+          [camelize(`add_${asSingular}`), 'add'],
+          [camelize(`add_${asPlural}`), 'add'],
+          [camelize(`remove_${asSingular}`), 'remove'],
+          [camelize(`remove_${asPlural}`), 'remove'],
+          [camelize(`create_${asSingular}`), 'create'],
+        ],
       });
     }
 
@@ -450,18 +455,18 @@ module.exports = function MakeModel(makeFn, seed = 0, models = {}) {
         options,
         target,
         type: 'belongsToMany',
-        methods: {
-          [camelize(`get_${asPlural}`)]: AssocMethods.get,
-          [camelize(`count_${asPlural}`)]: AssocMethods.count,
-          [camelize(`has_${asSingular}`)]: AssocMethods.has,
-          [camelize(`has_${asPlural}`)]: AssocMethods.has,
-          [camelize(`set_${asPlural}`)]: AssocMethods.set,
-          [camelize(`add_${asSingular}`)]: AssocMethods.add,
-          [camelize(`add_${asPlural}`)]: AssocMethods.add,
-          [camelize(`remove_${asSingular}`)]: AssocMethods.remove,
-          [camelize(`remove_${asPlural}`)]: AssocMethods.remove,
-          [camelize(`create_${asSingular}`)]: AssocMethods.create,
-        },
+        methods: [
+          [camelize(`get_${asPlural}`), 'get'],
+          [camelize(`count_${asPlural}`), 'count'],
+          [camelize(`has_${asSingular}`), 'has'],
+          [camelize(`has_${asPlural}`), 'has'],
+          [camelize(`set_${asPlural}`), 'set'],
+          [camelize(`add_${asSingular}`), 'add'],
+          [camelize(`add_${asPlural}`), 'add'],
+          [camelize(`remove_${asSingular}`), 'remove'],
+          [camelize(`remove_${asPlural}`), 'remove'],
+          [camelize(`create_${asSingular}`), 'create'],
+        ],
       });
     }
 
@@ -515,21 +520,44 @@ module.exports = function MakeModel(makeFn, seed = 0, models = {}) {
       this.__seed(seed);
     }
 
-    constructor(data = {}, options = {}, { selectFields = fields } = {}) {
+    constructor(data = {}, options = {}, { attributes = fields } = {}) {
       this.isNewRecord = options.isNewRecord ?? true;
 
       if (!this.isNewRecord) {
         this._previousDataValues = data;
       }
 
-      for (const field of selectFields) {
+      this.__include = options.include ?? [];
+      if (!Array.isArray(this.__include)) {
+        this.__include = [this.__include];
+      }
+      this.__include = this.__include.map((assoc) => {
+        if (typeof assoc === 'string') {
+          assoc = { as: assoc };
+        } else if (assoc.__schema) {
+          assoc = { model: assoc };
+        }
+        if (!assoc.as) {
+          assoc.as = Model.__associations.find(({ target }) => target === assoc.model).options.as;
+        } else if (!assoc.model) {
+          assoc.model = Model.__associations.find(({ options }) => options.as === assoc.as).target;
+        }
+        return assoc;
+      });
+
+      for (const field of attributes) {
         this.dataValues[field] = deepCopy(data[field]) ?? null;
       }
 
       for (const association of Model.__associations) {
-        for (const method of Object.keys(association.methods)) {
-          this[`__${method}`] = association.methods[method](association, this);
-          this[method] = jest.fn(async (...args) => this[`__${method}`](...args));
+        for (const [alias, method] of association.methods) {
+          this[`__${alias}`] = AssocMethods[method](association, this);
+          this[alias] = jest.fn(async (...args) => this[`__${alias}`](...args));
+        }
+        if (this.__include.find((assoc) => assoc.as === association.options.as)) {
+          const { methods } = Model.__associations.find(({ options }) => options.as === association.options.as);
+          const [alias] = methods.find(([, method]) => method === 'get');
+          this[association.options.as] = this[`__${alias}`]();
         }
       }
 
@@ -562,6 +590,9 @@ module.exports = function MakeModel(makeFn, seed = 0, models = {}) {
     }
 
     __get(key) {
+      if (this.__include.find((assoc) => assoc.as === key)) {
+        return this[key];
+      }
       return fields.includes(key) ? this.dataValues[key] : this.dataValues;
     }
 

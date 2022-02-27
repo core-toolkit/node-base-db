@@ -267,6 +267,83 @@ describe('ModelMock', () => {
       expect(record.baz).toBe('qux');
     });
 
+    it('includes the specified to-one associations', () => {
+      const models = {};
+      ModelMock(() => ({
+        name: 'Model',
+        definition: {
+          id: { type: NUMBER, primaryKey: true, autoIncrement: true },
+        },
+        associations: {
+          Other: (self, target) => self.hasOne(target),
+        },
+      }), 0, models);
+      ModelMock(() => ({
+        name: 'Other',
+        definition: {
+          id: { type: NUMBER, primaryKey: true, autoIncrement: true },
+          ModelId: { type: NUMBER },
+        },
+        associations: {
+          Model: (self, target) => self.belongsTo(target),
+        },
+      }), 0, models);
+
+      const instance = models.Model.__create();
+      const otherInstance = models.Other.__create({ ModelId: 1 });
+
+      const [record] = models.Model.__query({ include: 'Other' });
+      expect(record).toHaveProperty('Other', expect.any(models.Other));
+      expect(record.Other.equals(otherInstance)).toBe(true);
+
+      const [otherRecord] = models.Other.__query({ include: ['Model'] });
+      expect(otherRecord).toHaveProperty('Model', expect.any(models.Model));
+      expect(otherRecord.Model.equals(instance)).toBe(true);
+    });
+
+    it('includes the specified to-many associations', () => {
+      const models = {};
+      ModelMock(() => ({
+        name: 'Model',
+        definition: {
+          id: { type: NUMBER, primaryKey: true, autoIncrement: true },
+        },
+        associations: {
+          Other: (self, target) => self.belongsToMany(target, { through: 'Through' }),
+        },
+      }), 0, models);
+      ModelMock(() => ({
+        name: 'Other',
+        definition: {
+          id: { type: NUMBER, primaryKey: true, autoIncrement: true },
+        },
+        associations: {
+          Model: (self, target) => self.belongsToMany(target, { through: 'Through' }),
+        },
+      }), 0, models);
+
+      const instance = models.Model.__create();
+      const otherInstance1 = models.Other.__create();
+      const otherInstance2 = models.Other.__create();
+
+      models.Through.__create({ ModelId: 1, OtherId: 1 });
+      models.Through.__create({ ModelId: 1, OtherId: 2 });
+
+      const [record] = models.Model.__query({ include: models.Other });
+      expect(record).toHaveProperty('Others', expect.any(Array));
+      expect(record.Others.length).toBe(2);
+      expect(record.Others[0]).toBeInstanceOf(models.Other);
+      expect(record.Others[1]).toBeInstanceOf(models.Other);
+      expect(record.Others[0].equals(otherInstance1)).toBe(true);
+      expect(record.Others[1].equals(otherInstance2)).toBe(true);
+
+      const [otherRecord] = models.Other.__query({ include: [models.Model] });
+      expect(otherRecord).toHaveProperty('Models', expect.any(Array));
+      expect(otherRecord.Models.length).toBe(1);
+      expect(otherRecord.Models[0]).toBeInstanceOf(models.Model);
+      expect(otherRecord.Models[0].equals(instance)).toBe(true);
+    });
+
     it('returns all records matching the specified query', () => {
       const records = [...Model.__query({
         where: {
@@ -831,11 +908,11 @@ describe('ModelMock', () => {
         },
         target: Model,
         type: 'belongsTo',
-        methods: {
-          getParent: expect.any(Function),
-          setParent: expect.any(Function),
-          createParent: expect.any(Function),
-        },
+        methods: [
+          ['getParent', 'get'],
+          ['setParent', 'set'],
+          ['createParent', 'create'],
+        ],
       }]);
 
       Model.belongsTo(Model, {
@@ -999,18 +1076,18 @@ describe('ModelMock', () => {
         },
         target: Model,
         type: 'belongsToMany',
-        methods: {
-          getParents: expect.any(Function),
-          countParents: expect.any(Function),
-          hasParent: expect.any(Function),
-          hasParents: expect.any(Function),
-          setParents: expect.any(Function),
-          addParent: expect.any(Function),
-          addParents: expect.any(Function),
-          removeParent: expect.any(Function),
-          removeParents: expect.any(Function),
-          createParent: expect.any(Function),
-        },
+        methods: [
+          ['getParents', 'get'],
+          ['countParents', 'count'],
+          ['hasParent', 'has'],
+          ['hasParents', 'has'],
+          ['setParents', 'set'],
+          ['addParent', 'add'],
+          ['addParents', 'add'],
+          ['removeParent', 'remove'],
+          ['removeParents', 'remove'],
+          ['createParent', 'create'],
+        ],
       }]);
 
       Model.belongsToMany(Model, {
@@ -1331,11 +1408,11 @@ describe('ModelMock', () => {
         },
         target: Model,
         type: 'hasOne',
-        methods: {
-          getChild: expect.any(Function),
-          setChild: expect.any(Function),
-          createChild: expect.any(Function),
-        },
+        methods: [
+          ['getChild', 'get'],
+          ['setChild', 'set'],
+          ['createChild', 'create'],
+        ],
       }]);
 
       Model.hasOne(Model, {
@@ -1479,18 +1556,18 @@ describe('ModelMock', () => {
         },
         target: Model,
         type: 'hasMany',
-        methods: {
-          getChildren: expect.any(Function),
-          countChildren: expect.any(Function),
-          hasChild: expect.any(Function),
-          hasChildren: expect.any(Function),
-          setChildren: expect.any(Function),
-          addChild: expect.any(Function),
-          addChildren: expect.any(Function),
-          removeChild: expect.any(Function),
-          removeChildren: expect.any(Function),
-          createChild: expect.any(Function),
-        },
+        methods: [
+          ['getChildren', 'get'],
+          ['countChildren', 'count'],
+          ['hasChild', 'has'],
+          ['hasChildren', 'has'],
+          ['setChildren', 'set'],
+          ['addChild', 'add'],
+          ['addChildren', 'add'],
+          ['removeChild', 'remove'],
+          ['removeChildren', 'remove'],
+          ['createChild', 'create'],
+        ],
       }]);
 
       Model.hasMany(Model, {
@@ -1759,6 +1836,39 @@ describe('ModelMock', () => {
 
       const row = instance.get();
       expect(row).toBe(instance.dataValues);
+    });
+
+    it('returns all associated instances via an alias', () => {
+      const models = {};
+      ModelMock(() => ({
+        name: 'Model',
+        definition: {
+          id: { type: NUMBER, primaryKey: true, autoIncrement: true },
+        },
+        associations: {
+          Other: (self, target) => self.hasMany(target),
+        },
+      }), 0, models);
+      ModelMock(() => ({
+        name: 'Other',
+        definition: {
+          id: { type: NUMBER, primaryKey: true, autoIncrement: true },
+          ModelId: { type: NUMBER },
+        },
+      }), 0, models);
+
+      models.Model.__create();
+      const otherInstance1 = models.Other.__create({ ModelId: 1 });
+      const otherInstance2 = models.Other.__create({ ModelId: 1 });
+
+      const record = models.Model.__findOne({ include: [{ as: 'Others', model: models.Other }] });
+      const otherInstances = record.get('Others');
+      expect(otherInstances).toBeInstanceOf(Array);
+      expect(otherInstances.length).toBe(2);
+      expect(otherInstances[0]).toBeInstanceOf(models.Other);
+      expect(otherInstances[1]).toBeInstanceOf(models.Other);
+      expect(otherInstances[0].equals(otherInstance1)).toBe(true);
+      expect(otherInstances[1].equals(otherInstance2)).toBe(true);
     });
   });
 
