@@ -3,7 +3,15 @@ const { camelize, pluralize, singularize } = require('sequelize/dist/lib/utils')
 const DataTypes = require('./DataTypesMock');
 const { deepCopy, deepEquals } = require('node-base/src/utils/Obj');
 
-const toInstanceArray = (instances) => (instances ? [].concat(instances) : []);
+const toInstanceArray = (instances, model) => {
+  instances = instances ? [].concat(instances) : [];
+  for (let i = 0; i < instances.length; ++i) {
+    if (!(instances[i] instanceof model)) {
+      instances[i] = model.__findByPk(instances[i]);
+    }
+  }
+  return instances;
+};
 
 const makeFk = (spec, target, fk, as, allowNull = true) => {
   if (!spec?.name) {
@@ -33,7 +41,7 @@ const AssocMethods = {
     return target[`__find${type.endsWith('Many') ? 'All' : 'One'}`]({ where });
   },
   set: ({ options, target, type }, instance) => (others) => {
-    const [other] = others = toInstanceArray(others);
+    const [other] = others = toInstanceArray(others, target);
     if (type === 'belongsTo') {
       const otherKey = other?.[options.targetKey] ?? null;
 
@@ -69,8 +77,8 @@ const AssocMethods = {
     }
   },
   count: (association, instance) => () => AssocMethods.get(association, instance)().length,
-  has: ({ options, type }, instance) => (others) => {
-    for (const other of toInstanceArray(others)) {
+  has: ({ options, target, type }, instance) => (others) => {
+    for (const other of toInstanceArray(others, target)) {
       if (type === 'belongsToMany') {
         const through = options.through.model.__findOne({
           where: {
@@ -89,8 +97,8 @@ const AssocMethods = {
     }
     return true;
   },
-  add: ({ options, type }, instance) => (others) => {
-    for (const other of toInstanceArray(others)) {
+  add: ({ options, target, type }, instance) => (others) => {
+    for (const other of toInstanceArray(others, target)) {
       if (type === 'belongsToMany') {
         options.through.model.__create({
           [options.foreignKey.name]: instance.get(options.sourceKey),
@@ -101,8 +109,8 @@ const AssocMethods = {
       }
     }
   },
-  remove: ({ options, type }, instance) => (others) => {
-    for (const other of toInstanceArray(others)) {
+  remove: ({ options, target, type }, instance) => (others) => {
+    for (const other of toInstanceArray(others, target)) {
       if (type === 'belongsToMany') {
         options.through.model.__destroy({
           where: {

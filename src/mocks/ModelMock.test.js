@@ -877,7 +877,7 @@ describe('ModelMock', () => {
         expect(instance1.OtherModelFoo).toBe('bar');
 
         const instance2 = Model.__create();
-        await instance2.setOtherModel(otherInstance)
+        await instance2.setOtherModel(otherInstance.id)
         expect(instance2.OtherModelFoo).toBe('bar');
 
         instance1.__reload();
@@ -1115,6 +1115,7 @@ describe('ModelMock', () => {
         const otherInstance1 = OtherModel.__create();
         ThroughModel.create({ ModelId: 1, OtherModelId: 1 });
         await expect(instance.hasOtherModel(otherInstance1)).resolves.toBe(true);
+        await expect(instance.hasOtherModel(otherInstance1.id)).resolves.toBe(true);
 
         const otherInstance2 = OtherModel.__create();
         await expect(instance.hasOtherModel(otherInstance2)).resolves.toBe(false);
@@ -1134,7 +1135,7 @@ describe('ModelMock', () => {
         await expect(instance.hasOtherModels([otherInstance1, otherInstance2])).resolves.toBe(false);
 
         ThroughModel.create({ ModelId: 1, OtherModelId: 2 });
-        await expect(instance.hasOtherModels([otherInstance1, otherInstance2])).resolves.toBe(true);
+        await expect(instance.hasOtherModels([otherInstance1, otherInstance2.id])).resolves.toBe(true);
       });
     });
 
@@ -1148,7 +1149,7 @@ describe('ModelMock', () => {
         expect(ThroughModel.__findOne({ where: { ModelId: 1, OtherModelId: 1 } })).toBeTruthy();
 
         const otherInstance2 = OtherModel.__create();
-        await instance.addOtherModel(otherInstance2);
+        await instance.addOtherModel(otherInstance2.id);
         expect(ThroughModel.__findOne({ where: { ModelId: 1, OtherModelId: 2 } })).toBeTruthy();
         expect(ThroughModel.__findOne({ where: { ModelId: 1, OtherModelId: 1 } })).toBeTruthy();
       });
@@ -1165,7 +1166,7 @@ describe('ModelMock', () => {
 
         const otherInstance2 = OtherModel.__create();
         const otherInstance3 = OtherModel.__create();
-        await instance.addOtherModels([otherInstance2, otherInstance3]);
+        await instance.addOtherModels([otherInstance2, otherInstance3.id]);
         expect(ThroughModel.__findOne({ where: { ModelId: 1, OtherModelId: 2 } })).toBeTruthy();
         expect(ThroughModel.__findOne({ where: { ModelId: 1, OtherModelId: 3 } })).toBeTruthy();
         expect(ThroughModel.__findOne({ where: { ModelId: 1, OtherModelId: 1 } })).toBeTruthy();
@@ -1180,6 +1181,10 @@ describe('ModelMock', () => {
         ThroughModel.create({ ModelId: 1, OtherModelId: 1 });
 
         await instance.removeOtherModel(otherInstance);
+        expect(ThroughModel.__findOne({ where: { ModelId: 1, OtherModelId: 1 } })).toBeFalsy();
+
+        ThroughModel.create({ ModelId: 1, OtherModelId: 1 });
+        await instance.removeOtherModel(otherInstance.id);
         expect(ThroughModel.__findOne({ where: { ModelId: 1, OtherModelId: 1 } })).toBeFalsy();
       });
     });
@@ -1202,7 +1207,7 @@ describe('ModelMock', () => {
         expect(ThroughModel.__findOne({ where: { ModelId: 1, OtherModelId: 3 } })).toBeTruthy();
 
 
-        await instance.removeOtherModels([otherInstance2, otherInstance3]);
+        await instance.removeOtherModels([otherInstance2, otherInstance3.id]);
         expect(ThroughModel.__findOne({ where: { ModelId: 1, OtherModelId: 1 } })).toBeFalsy();
         expect(ThroughModel.__findOne({ where: { ModelId: 1, OtherModelId: 2 } })).toBeFalsy();
         expect(ThroughModel.__findOne({ where: { ModelId: 1, OtherModelId: 3 } })).toBeFalsy();
@@ -1219,7 +1224,7 @@ describe('ModelMock', () => {
         expect(ThroughModel.__findOne({ where: { ModelId: 1, OtherModelId: 1 } })).toBeTruthy();
 
         const otherInstance2 = OtherModel.__create();
-        await instance.setOtherModels([otherInstance2]);
+        await instance.setOtherModels([otherInstance2.id]);
         expect(ThroughModel.__findOne({ where: { ModelId: 1, OtherModelId: 1 } })).toBeFalsy();
         expect(ThroughModel.__findOne({ where: { ModelId: 1, OtherModelId: 2 } })).toBeTruthy();
 
@@ -1272,6 +1277,7 @@ describe('ModelMock', () => {
       ModelMock(() => ({
         name: 'OtherModel',
         definition: {
+          id: { type: NUMBER, primaryKey: true, autoIncrement: true },
           ModelFoo: { type: STRING },
         },
       }), 0, models);
@@ -1356,7 +1362,7 @@ describe('ModelMock', () => {
         const instance = Model.__create({ id: 1, foo: 'bar' });
         const otherInstance = await instance.createOtherModel();
         expect(otherInstance).toBeInstanceOf(OtherModel);
-        expect(otherInstance.get()).toEqual({ ModelFoo: 'bar' });
+        expect(otherInstance.get()).toEqual({ id: 1, ModelFoo: 'bar' });
       });
     });
 
@@ -1371,7 +1377,7 @@ describe('ModelMock', () => {
         expect(otherInstance1.ModelFoo).toBe('bar');
 
         const otherInstance2 = OtherModel.__create();
-        await instance.setOtherModel(otherInstance2);
+        await instance.setOtherModel(otherInstance2.id);
         otherInstance2.__reload();
         expect(otherInstance2.ModelFoo).toBe('bar');
         otherInstance1.__reload();
@@ -1390,7 +1396,7 @@ describe('ModelMock', () => {
         const instance = Model.__create({ id: 1, foo: 'bar' });
 
         await expect(instance.getOtherModel()).resolves.toBe(null);
-        const otherInstance = OtherModel.__create({ ModelFoo: 'bar' });
+        const otherInstance = OtherModel.__create({ id: 1, ModelFoo: 'bar' });
 
         const instance_otherInstance = await instance.getOtherModel();
         expect(instance_otherInstance).toBeInstanceOf(OtherModel);
@@ -1552,6 +1558,7 @@ describe('ModelMock', () => {
 
         const otherInstance1 = OtherModel.__create({ ModelFoo: 'bar' });
         await expect(instance.hasOtherModel(otherInstance1)).resolves.toBe(true);
+        await expect(instance.hasOtherModel(otherInstance1.id)).resolves.toBe(true);
 
         const otherInstance2 = OtherModel.__create();
         await expect(instance.hasOtherModel(otherInstance2)).resolves.toBe(false);
@@ -1570,7 +1577,7 @@ describe('ModelMock', () => {
         await expect(instance.hasOtherModels([otherInstance1, otherInstance2])).resolves.toBe(false);
 
         otherInstance2.__update({ ModelFoo: 'bar' });
-        await expect(instance.hasOtherModels([otherInstance1, otherInstance2])).resolves.toBe(true);
+        await expect(instance.hasOtherModels([otherInstance1, otherInstance2.id])).resolves.toBe(true);
       });
     });
 
@@ -1585,7 +1592,7 @@ describe('ModelMock', () => {
         expect(otherInstance1.ModelFoo).toBe('bar');
 
         const otherInstance2 = OtherModel.__create();
-        await instance.addOtherModel(otherInstance2);
+        await instance.addOtherModel(otherInstance2.id);
         otherInstance2.__reload();
         expect(otherInstance2.ModelFoo).toBe('bar');
 
@@ -1606,7 +1613,7 @@ describe('ModelMock', () => {
 
         const otherInstance2 = OtherModel.__create();
         const otherInstance3 = OtherModel.__create();
-        await instance.addOtherModels([otherInstance2, otherInstance3]);
+        await instance.addOtherModels([otherInstance2, otherInstance3.id]);
         otherInstance2.__reload();
         expect(otherInstance2.ModelFoo).toBe('bar');
         otherInstance3.__reload();
@@ -1624,6 +1631,11 @@ describe('ModelMock', () => {
 
         const otherInstance = OtherModel.__create({ ModelFoo: 'bar' });
         await instance.removeOtherModel(otherInstance);
+        otherInstance.__reload();
+        expect(otherInstance.ModelFoo).toBe(null);
+
+        otherInstance.__update({ ModelFoo: 'bar' });
+        await instance.removeOtherModel(otherInstance.id);
         otherInstance.__reload();
         expect(otherInstance.ModelFoo).toBe(null);
       });
@@ -1647,7 +1659,7 @@ describe('ModelMock', () => {
         expect(otherInstance3.ModelFoo).toBe('bar');
 
 
-        await instance.removeOtherModels([otherInstance2, otherInstance3]);
+        await instance.removeOtherModels([otherInstance2, otherInstance3.id]);
         otherInstance1.__reload();
         expect(otherInstance1.ModelFoo).toBe(null);
         otherInstance2.__reload();
@@ -1668,7 +1680,7 @@ describe('ModelMock', () => {
         expect(otherInstance1.ModelFoo).toBe('bar');
 
         const otherInstance2 = OtherModel.__create();
-        await instance.setOtherModels([otherInstance2]);
+        await instance.setOtherModels([otherInstance2.id]);
         otherInstance2.__reload();
         expect(otherInstance2.ModelFoo).toBe('bar');
         otherInstance1.__reload();
