@@ -23,21 +23,47 @@ const makeFk = (spec, target, fk, as, allowNull = true) => {
   return spec;
 };
 
+const parseInclude = (Model, include = []) => {
+  if (!Array.isArray(include)) {
+    include = [include];
+  }
+  include = include.map((assoc) => {
+    if (typeof assoc === 'string') {
+      assoc = { as: assoc };
+    } else if (assoc.__schema) {
+      assoc = { model: assoc };
+    }
+    if (!assoc.as) {
+      assoc.as = Model.__associations.find(({ target }) => target === assoc.model).options.as;
+    } else if (!assoc.model) {
+      assoc.model = Model.__associations.find(({ options }) => options.as === assoc.as).target;
+    }
+    assoc.where ??= {};
+
+    return assoc;
+  });
+  return include;
+};
+
 const AssocMethods = {
-  get: ({ options, target, type }, instance) => (opts = {}) => {
-    const where = {};
+  _where: ({ options, type }, instance, where) => {
+    const query = {}
     if (type === 'belongsToMany') {
       const throughs = options.through.model.__findAll({
         where: {
           [options.foreignKey.name]: instance.get(options.sourceKey),
         },
       });
-      where[options.targetKey] = throughs.map((through) => through.get(options.otherKey.name));
+      query[options.targetKey] = throughs.map((through) => through.get(options.otherKey.name));
     } else if (type === 'belongsTo') {
-      where[options.targetKey] = instance.get(options.foreignKey.name);
+      query[options.targetKey] = instance.get(options.foreignKey.name);
     } else {
-      where[options.foreignKey.name] = instance.get(options.sourceKey);
+      query[options.foreignKey.name] = instance.get(options.sourceKey);
     }
+    return where ? { [Op.and]: [where, query] } : query;
+  },
+  get: ({ options, target, type }, instance) => (opts = {}) => {
+    const where = AssocMethods._where({ options, type }, instance, opts.where);
     return target[`__find${type.endsWith('Many') ? 'All' : 'One'}`]({ ...opts, where });
   },
   set: ({ options, target, type }, instance) => (others) => {

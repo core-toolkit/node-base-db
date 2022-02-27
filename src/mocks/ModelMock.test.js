@@ -1353,7 +1353,7 @@ describe('ModelMock', () => {
     });
 
     describe('.getOTHERS()', () => {
-      it('returns the remote instance', async () => {
+      it('returns the remote instances', async () => {
         const { Model, OtherModel, ThroughModel } = makeAssociatedModels();
 
         const instance = Model.__create();
@@ -1371,6 +1371,22 @@ describe('ModelMock', () => {
         expect(instance_otherInstances[1]).toBeInstanceOf(OtherModel);
         expect(instance_otherInstances[0].get()).toEqual(otherInstance1.get());
         expect(instance_otherInstances[1].get()).toEqual(otherInstance2.get());
+      });
+
+      it('returns the remote instances matching the specified query', async () => {
+        const { Model, OtherModel, ThroughModel } = makeAssociatedModels();
+
+        const instance = Model.__create();
+        const otherInstance1 = OtherModel.__create();
+        OtherModel.__create();
+
+        ThroughModel.create({ ModelId: 1, OtherModelId: 1 });
+        ThroughModel.create({ ModelId: 1, OtherModelId: 2 });
+
+        const otherInstances = await instance.getOtherModels({ where: { id: 1 } });
+        expect(otherInstances.length).toBe(1);
+        expect(otherInstances[0]).toBeInstanceOf(OtherModel);
+        expect(otherInstances[0].get()).toEqual(otherInstance1.get());
       });
     });
   });
@@ -1811,7 +1827,7 @@ describe('ModelMock', () => {
     });
 
     describe('.getOTHERS()', () => {
-      it('returns the remote instance', async () => {
+      it('returns the remote instances', async () => {
         const { Model, OtherModel } = makeAssociatedModels();
 
         const instance = Model.__create({ id: 1, foo: 'bar' });
@@ -1827,6 +1843,20 @@ describe('ModelMock', () => {
         expect(instance_otherInstances[1]).toBeInstanceOf(OtherModel);
         expect(instance_otherInstances[0].get()).toEqual(otherInstance1.get());
         expect(instance_otherInstances[1].get()).toEqual(otherInstance2.get());
+      });
+
+      it('returns the remote instances matching the specified query', async () => {
+        const { Model, OtherModel } = makeAssociatedModels();
+
+        const instance = Model.__create({ id: 1, foo: 'bar' });
+
+        const otherInstance1 = OtherModel.__create({ ModelFoo: 'bar' });
+        OtherModel.__create({ ModelFoo: 'bar' });
+
+        const otherInstances = await instance.getOtherModels({ where: { id: 1 } });
+        expect(otherInstances.length).toBe(1);
+        expect(otherInstances[0]).toBeInstanceOf(OtherModel);
+        expect(otherInstances[0].get()).toEqual(otherInstance1.get());
       });
     });
   });
