@@ -2026,6 +2026,14 @@ describe('ModelMock', () => {
       expect(instance).toHaveProperty('id', 1);
     });
 
+    it('persists instances with a custom value for an "autoIncrement" field', async () => {
+      const Model = ModelMock({ id: { primaryKey: true, autoIncrement: true, type: NUMBER } });
+      const instance = Model.build({ id: 2 });
+      await instance.save();
+      expect(instance).toHaveProperty('id', 2);
+      expect(Model.__create().id).toBe(3);
+    });
+
     it('persists instances with an unset "defaultValue" field', async () => {
       const Model = ModelMock({ foo: { defaultValue: 'bar', type: STRING } });
       const instance = Model.build();

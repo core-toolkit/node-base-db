@@ -649,8 +649,12 @@ module.exports = function MakeModel(makeFn, seed = 0, models = {}) {
         }
       }
       if (this.isNewRecord) {
-        if (schema[primary]?.autoIncrement) {
-          this.dataValues[primary] = ++Model.#lastId;
+        if (primary) {
+          if (this.dataValues[primary] !== null && schema[primary].autoIncrement) {
+            Model.#lastId = Math.max(Model.#lastId, this.dataValues[primary]);
+          } else if (schema[primary].autoIncrement) {
+            this.dataValues[primary] = ++Model.#lastId;
+          }
         }
         this.isNewRecord = false;
         Model.__records.add(this._previousDataValues);
