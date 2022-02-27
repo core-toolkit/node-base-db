@@ -384,6 +384,49 @@ describe('ModelMock', () => {
       ]);
     });
 
+    it('returns all records matching the specified query in the included associations', () => {
+      const models = {};
+      ModelMock(() => ({
+        name: 'Model',
+        definition: {
+          id: { type: NUMBER, primaryKey: true, autoIncrement: true },
+        },
+        associations: {
+          Other: (self, target) => self.hasMany(target),
+        },
+      }), 0, models);
+      ModelMock(() => ({
+        name: 'Other',
+        definition: {
+          foo: { type: STRING },
+          ModelId: { type: NUMBER },
+        },
+      }), 0, models);
+
+      models.Model.__create();
+      models.Model.__create();
+      models.Model.__create();
+      models.Other.__create({ foo: 'bar', ModelId: 1 });
+      models.Other.__create({ foo: 'baz', ModelId: 2 });
+      models.Other.__create({ foo: 'qux', ModelId: 2 });
+      models.Other.__create({ foo: 'quux', ModelId: 3 });
+
+      const records = [...models.Model.__query({
+        include: {
+          as: 'Others', where: { foo: { [Op.startsWith]: 'ba' } },
+        },
+      })];
+      expect(records.length).toBe(2);
+
+      expect(records[0].id).toBe(1);
+      expect(records[0].Others.length).toBe(1);
+      expect(records[0].Others[0].foo).toBe('bar');
+
+      expect(records[1].id).toBe(2);
+      expect(records[1].Others.length).toBe(1);
+      expect(records[1].Others[0].foo).toBe('baz');
+    });
+
     it('returns a limited number of records', () => {
       const records = [...Model.__query({
         where: { foo: 'bar' },

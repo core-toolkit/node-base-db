@@ -338,16 +338,18 @@ module.exports = function MakeModel(makeFn, seed = 0, models = {}) {
 
     static * __query(options = {}) {
       const {
-        include,
         where = {},
       } = options;
 
       let {
+        include,
         limit = 0,
         offset = 0,
         order = [],
         attributes = fields,
       } = options;
+
+      include = parseInclude(this, include);
 
       if ('exclude' in attributes) {
         attributes = fields.filter((field) => !attributes.exclude.includes(field));
@@ -369,9 +371,23 @@ module.exports = function MakeModel(makeFn, seed = 0, models = {}) {
 
       for (const row of records) {
         if (match(row, null, null, where)) {
+          const instance = new this(row, { include, isNewRecord: false }, { attributes });
+
+          if (!include.every((assoc) => {
+            if (!Object.keys(assoc.where).length) {
+              return true;
+            }
+            const association = this.__associations.find(({ options }) => options.as === assoc.as);
+            const where = AssocMethods._where(association, instance, assoc.where);
+
+            return !!assoc.model.__count({ where });
+          })) {
+            continue;
+          }
+
           if (offset-- > 0) continue;
 
-          yield new this(row, { include, isNewRecord: false }, { attributes });
+          yield instance;
 
           if (--limit === 0) break;
         }
@@ -553,23 +569,7 @@ module.exports = function MakeModel(makeFn, seed = 0, models = {}) {
         this._previousDataValues = data;
       }
 
-      this.__include = options.include ?? [];
-      if (!Array.isArray(this.__include)) {
-        this.__include = [this.__include];
-      }
-      this.__include = this.__include.map((assoc) => {
-        if (typeof assoc === 'string') {
-          assoc = { as: assoc };
-        } else if (assoc.__schema) {
-          assoc = { model: assoc };
-        }
-        if (!assoc.as) {
-          assoc.as = Model.__associations.find(({ target }) => target === assoc.model).options.as;
-        } else if (!assoc.model) {
-          assoc.model = Model.__associations.find(({ options }) => options.as === assoc.as).target;
-        }
-        return assoc;
-      });
+      this.__include = parseInclude(Model, options.include);
 
       for (const field of attributes) {
         this.dataValues[field] = deepCopy(data[field]) ?? null;
@@ -584,7 +584,7 @@ module.exports = function MakeModel(makeFn, seed = 0, models = {}) {
         if (include) {
           const { methods } = Model.__associations.find(({ options }) => options.as === include.as);
           const [alias] = methods.find(([, method]) => method === 'get');
-          this[include.as] = this[`__${alias}`]({ attributes: include.attributes });
+          this[include.as] = this[`__${alias}`]({ attributes: include.attributes, where: include.where });
         }
       }
 
