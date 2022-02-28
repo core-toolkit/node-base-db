@@ -13,27 +13,16 @@ module.exports = (app) => {
   app.appendTypeParameters('Service', 'Model');
   app.appendTypeParameters('UseCase', 'Model');
 
-  const { start, initAll } = app;
+  app.afterInit(({ Core: { Cli } }) => Cli.register({
+    name: 'create:model',
+    args: ['name'],
+    description: 'Create new model',
+    exec: CreateModel,
+  }, true));
 
-  app.initAll = async () => {
-    const { Core: { Cli } } = await app.resolveDependencies(['Core']);
-    if (!Cli.list().includes('create:model')) {
-      Cli.register({
-        name: 'create:model',
-        args: ['name'],
-        description: 'Create new model',
-        exec: CreateModel,
-      });
-    }
+  app.afterStart(({ Service }) => Service.MigrationService.up());
 
-    return initAll();
-  };
-
-  app.start = async () => {
-    await start();
-    const { Service } = await app.resolveDependencies(['Service']);
-    await Service.MigrationService.up();
-  };
+  app.beforeStop(({ Client }) => Client.DbClient.close());
 
   return app;
 };

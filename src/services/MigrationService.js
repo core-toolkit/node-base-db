@@ -43,7 +43,7 @@ module.exports = ({ Core: { Cli, Project }, Client: { DbClient }, Log }) => {
         await umzug.up();
       },
     },
-  ]);
+  ], true);
 
   return umzug;
 };
