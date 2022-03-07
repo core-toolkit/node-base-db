@@ -1,6 +1,6 @@
 {
   "name": "@core-toolkit/node-base-db",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Database connection plugin for node-base",
   "main": "src/index.js",
   "scripts": {
@@ -21,9 +21,9 @@
     "umzug": "^3.0.0"
   },
   "devDependencies": {
-    "@core-toolkit/node-base-dev": "^0.0.1"
+    "@core-toolkit/node-base-dev": "0.x"
   },
   "peerDependencies": {
-    "@core-toolkit/node-base": "^0.0.6"
+    "@core-toolkit/node-base": "0.x"
   }
 }
