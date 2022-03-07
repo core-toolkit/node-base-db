@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { camelize, pluralize, singularize } = require('sequelize/dist/lib/utils');
+const { camelize, pluralize, singularize } = require('sequelize/lib/utils');
 const DataTypes = require('./DataTypesMock');
 const { deepCopy, deepEquals } = require('@core-toolkit/node-base/src/utils/Obj');
 

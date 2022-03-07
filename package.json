@@ -1,6 +1,6 @@
 {
   "name": "@core-toolkit/node-base-db",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Database connection plugin for node-base",
   "main": "src/index.js",
   "scripts": {
@@ -17,7 +17,7 @@
   },
   "homepage": "https://github.com/core-toolkit/node-base-db#readme",
   "dependencies": {
-    "sequelize": "^6.15.0",
+    "sequelize": "^6.17.0",
     "umzug": "^3.0.0"
   },
   "devDependencies": {
