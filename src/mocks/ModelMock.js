@@ -1,7 +1,7 @@
 const { Op } = require('sequelize');
 const { camelize, pluralize, singularize } = require('sequelize/dist/lib/utils');
 const DataTypes = require('./DataTypesMock');
-const { deepCopy, deepEquals } = require('node-base/src/utils/Obj');
+const { deepCopy, deepEquals } = require('@core-toolkit/node-base/src/utils/Obj');
 
 const toInstanceArray = (instances, model) => {
   instances = instances ? [].concat(instances) : [];

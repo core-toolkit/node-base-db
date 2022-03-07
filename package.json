@@ -1,7 +1,7 @@
 {
-  "name": "node-base-db",
+  "name": "@core-toolkit/node-base-db",
   "version": "0.0.1",
-  "description": "",
+  "description": "Database connection plugin for node-base",
   "main": "src/index.js",
   "scripts": {
     "test": "jest --detectOpenHandles"
@@ -21,6 +21,9 @@
     "umzug": "^3.0.0"
   },
   "devDependencies": {
-    "node-base-dev": "github:core-toolkit/node-base-dev"
+    "@core-toolkit/node-base-dev": "^0.0.1"
+  },
+  "peerDependencies": {
+    "@core-toolkit/node-base": "^0.0.6"
   }
 }
